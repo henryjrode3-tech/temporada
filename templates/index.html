@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Temporada — Rental Pricing Analysis</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="wordmark">Tem<em>p</em>orada</div>
+    <div class="tagline">Vacation rental pricing analysis · Análisis de precios para renta vacacional</div>
+  </div>
+</header>
+
+<div class="form-container">
+
+  <p class="intro">
+    Tell us about your property and how it's performing.<br>
+    We'll recommend a pricing strategy tailored to the Mexican rental market.
+  </p>
+
+  <form action="/analyze" method="POST">
+
+    <!-- Section 1: Property Details -->
+    <div class="form-section">
+      <div class="section-heading">
+        <span class="section-num">1</span>
+        Your Property
+      </div>
+
+      <div class="field-row">
+        <div class="field-group">
+          <label for="location">
+            Location
+            <span class="hint">State or region in Mexico</span>
+          </label>
+          <input
+            type="text"
+            id="location"
+            name="location"
+            placeholder="e.g. Nayarit, Quintana Roo"
+            required
+          >
+        </div>
+
+        <div class="field-group">
+          <label for="property_type">
+            Property Type
+            <span class="hint">Choose the closest match</span>
+          </label>
+          <div class="select-wrap">
+            <select id="property_type" name="property_type" required>
+              <option value="" disabled selected>Select type…</option>
+              <option value="beach">Beach</option>
+              <option value="city">City</option>
+              <option value="mountain">Mountain</option>
+              <option value="colonial">Colonial Town</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 2: Pricing -->
+    <div class="form-section">
+      <div class="section-heading">
+        <span class="section-num">2</span>
+        Rates &amp; Approach
+      </div>
+
+      <div class="field-group">
+        <label for="base_rate">
+          Base Nightly Rate
+          <span class="hint">Your current standard price per night</span>
+        </label>
+        <div class="rate-row">
+          <input
+            type="number"
+            id="base_rate"
+            name="base_rate"
+            placeholder="e.g. 2500"
+            min="0"
+            step="1"
+            required
+          >
+          <div class="select-wrap">
+            <select id="currency" name="currency">
+              <option value="MXN">MXN $</option>
+              <option value="USD">USD $</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label for="pricing_approach">
+          Current Pricing Approach
+          <span class="hint">How do you set prices today?</span>
+        </label>
+        <div class="select-wrap">
+          <select id="pricing_approach" name="pricing_approach" required>
+            <option value="" disabled selected>Select approach…</option>
+            <option value="flat">Flat rate — same price all year</option>
+            <option value="seasonal">Already seasonal — I adjust by season</option>
+            <option value="unsure">Not sure</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 3: Occupancy -->
+    <div class="form-section">
+      <div class="section-heading">
+        <span class="section-num">3</span>
+        Monthly Occupancy
+      </div>
+
+      <p class="month-hint">
+        Roughly what percentage of nights is your property booked each month?
+        Best guesses are fine — even approximate numbers help the analysis.
+        Leave a month blank if you're unsure.
+      </p>
+
+      <div class="month-grid">
+        <div class="month-cell">
+          <label for="occ_Jan">Jan</label>
+          <input type="number" id="occ_Jan" name="occupancy_Jan" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Feb">Feb</label>
+          <input type="number" id="occ_Feb" name="occupancy_Feb" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Mar">Mar</label>
+          <input type="number" id="occ_Mar" name="occupancy_Mar" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Apr">Apr</label>
+          <input type="number" id="occ_Apr" name="occupancy_Apr" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_May">May</label>
+          <input type="number" id="occ_May" name="occupancy_May" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Jun">Jun</label>
+          <input type="number" id="occ_Jun" name="occupancy_Jun" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Jul">Jul</label>
+          <input type="number" id="occ_Jul" name="occupancy_Jul" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Aug">Aug</label>
+          <input type="number" id="occ_Aug" name="occupancy_Aug" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Sep">Sep</label>
+          <input type="number" id="occ_Sep" name="occupancy_Sep" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Oct">Oct</label>
+          <input type="number" id="occ_Oct" name="occupancy_Oct" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Nov">Nov</label>
+          <input type="number" id="occ_Nov" name="occupancy_Nov" min="0" max="100" placeholder="%">
+        </div>
+        <div class="month-cell">
+          <label for="occ_Dec">Dec</label>
+          <input type="number" id="occ_Dec" name="occupancy_Dec" min="0" max="100" placeholder="%">
+        </div>
+      </div>
+    </div>
+
+    <div class="submit-wrap">
+      <button type="submit" class="submit-btn">Analyze My Pricing →</button>
+      <p class="submit-note">Analysis takes 10–20 seconds. Please don't refresh the page.</p>
+    </div>
+
+  </form>
+
+  <div class="footer">Temporada · Powered by Claude AI · For Mexican vacation rental owners</div>
+
+</div>
+
+</body>
+</html>

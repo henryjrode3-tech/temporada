@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Temporada — Pricing Results</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="wordmark">Tem<em>p</em>orada</div>
+    <div class="tagline">Your personalized pricing recommendation</div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Input Summary -->
+  <div class="section">
+    <div class="section-title">Your Property</div>
+    <div class="summary-grid">
+      <div class="summary-item">Location<strong>{{ form_data.location }}</strong></div>
+      <div class="summary-item">Type<strong>{{ form_data.property_type | capitalize }}</strong></div>
+      <div class="summary-item">Base Rate<strong>{{ form_data.base_rate }} {{ form_data.currency }}/night</strong></div>
+      <div class="summary-item">Pricing Approach<strong>{{ form_data.pricing_approach | capitalize }}</strong></div>
+    </div>
+  </div>
+
+  <!-- Pricing Table -->
+  <div class="section">
+    <div class="section-title">Recommended Pricing Periods</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Period</th>
+          <th>Months</th>
+          <th>Multiplier</th>
+          <th>Rate ({{ form_data.currency }})</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for period in recommendations.periods %}
+        <tr>
+          <td>{{ period.name }}</td>
+          <td>{{ period.months | join(', ') }}</td>
+          <td class="multiplier">×{{ period.multiplier }}</td>
+          <td class="rate">{{ period.rate }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Explanations -->
+  <div class="section">
+    <div class="section-title">Why These Periods</div>
+    <ul class="explanation-list">
+      {% for period in recommendations.periods %}
+      <li>
+        <strong>{{ period.name }}</strong>
+        {{ recommendations.explanations[period.name] }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Revenue Impact -->
+  <div class="section">
+    <div class="section-title">Revenue Impact Estimate</div>
+    <p class="revenue-impact">{{ recommendations.revenue_impact }}</p>
+  </div>
+
+  <a href="/" class="back-link">← Analyze another property</a>
+
+</div>
+
+</body>
+</html>
