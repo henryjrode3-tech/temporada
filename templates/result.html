@@ -17,6 +17,12 @@
 
 <div class="container">
 
+  {% if form_data.ical_error %}
+  <div class="ical-warning">
+    ⚠️ No pudimos leer tu calendario de Airbnb — los resultados están basados en los datos ingresados manualmente.
+  </div>
+  {% endif %}
+
   <!-- Input Summary -->
   <div class="section">
     <div class="section-title">Your Property</div>
@@ -25,6 +31,7 @@
       <div class="summary-item">Type<strong>{{ form_data.property_type | capitalize }}</strong></div>
       <div class="summary-item">Base Rate<strong>{{ form_data.base_rate }} {{ form_data.currency }}/night</strong></div>
       <div class="summary-item">Pricing Approach<strong>{{ form_data.pricing_approach | capitalize }}</strong></div>
+      <div class="summary-item">Occupancy Data<strong>{{ form_data.occupancy_source | capitalize }}</strong></div>
     </div>
   </div>
 
