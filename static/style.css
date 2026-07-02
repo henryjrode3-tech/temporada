@@ -349,3 +349,36 @@ tr:last-child td { border-bottom: none; }
   .month-grid { grid-template-columns: repeat(3, 1fr); }
   .form-section, .section { padding: 22px 18px; }
 }
+
+/* ── Loading overlay ── */
+#loading-overlay {
+  position: fixed; inset: 0;
+  background: rgba(250,243,232,0.93);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  gap: 16px;
+}
+.loading-spinner {
+  width: 44px; height: 44px;
+  border: 3px solid var(--border);
+  border-top-color: var(--terracotta);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.loading-msg {
+  font-family: Georgia, serif;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+.loading-sub {
+  font-family: -apple-system, sans-serif;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
