@@ -153,7 +153,13 @@ def analyze():
     )
 
     raw = message.content[0].text.strip()
-    recommendations = json.loads(raw)
+    app.logger.error(f"Claude raw response: {repr(raw)}")
+
+    try:
+        recommendations = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        app.logger.error(f"JSON parse error: {e}")
+        return render_template("error.html", message="Hubo un problema al procesar la respuesta. Por favor intenta de nuevo."), 500
 
     form_data = {
         "location": location,

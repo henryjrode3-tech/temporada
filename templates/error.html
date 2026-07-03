@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Temporada — Error</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="wordmark">Tem<em>p</em>orada</div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="section" style="text-align:center; padding: 48px 32px;">
+    <p style="font-size:2rem; margin-bottom:16px;">⚠️</p>
+    <p style="font-family:-apple-system,sans-serif; font-size:1rem; color:var(--text); margin-bottom:24px;">
+      {{ message }}
+    </p>
+    <a href="/" class="back-link">← Volver al formulario</a>
+  </div>
+</div>
+
+</body>
+</html>
