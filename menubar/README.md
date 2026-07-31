@@ -60,9 +60,10 @@ enable it for Terminal (or Python).
 | **Start at Login** | launch automatically when you log in |
 | **Quit** | exit |
 
-Add photos anytime: drop them into your chosen folder, then click
-**Next Wallpaper** (or reopen the folder via **Choose Photo Folder…**) to pick
-them up.
+Add photos anytime: just drop them into your chosen folder. The app watches
+the folder and picks up new (or deleted) photos automatically within a few
+seconds — they join the rotation on the next change. Use **Refresh Now** if you
+want to jump to a new photo immediately.
 
 ## About the lock screen (important)
 

@@ -104,6 +104,7 @@ class WallpaperEngine(rumps.App):
             None,
             rumps.MenuItem("Next Wallpaper", callback=self.on_next),
             rumps.MenuItem("Previous Wallpaper", callback=self.on_prev),
+            rumps.MenuItem("Refresh Now", callback=self.on_refresh),
             self.pause_item,
             None,
             self.interval_menu,
@@ -114,10 +115,13 @@ class WallpaperEngine(rumps.App):
         ]
 
         self.timer = rumps.Timer(self.on_tick, self.cfg["interval"])
+        # Watches the folder for photos you add/remove while it's running.
+        self.scan_timer = rumps.Timer(self.on_scan_tick, 5)
 
         if self.cfg.get("folder") and os.path.isdir(self.cfg["folder"]):
             self.scan_folder(self.cfg["folder"], keep_pos=True)
         self.timer.start()
+        self.scan_timer.start()
 
     # ---------- config ----------
     def load_config(self):
@@ -139,15 +143,19 @@ class WallpaperEngine(rumps.App):
             pass
 
     # ---------- folder / photos ----------
-    def scan_folder(self, folder, keep_pos=False):
+    def list_images(self, folder):
+        """Return the image files currently in a folder (sorted by name)."""
         try:
             names = sorted(os.listdir(folder))
         except Exception:
-            names = []
-        self.photos = [
+            return []
+        return [
             os.path.join(folder, n) for n in names
             if os.path.splitext(n)[1].lower() in IMAGE_EXTS
         ]
+
+    def scan_folder(self, folder, keep_pos=False):
+        self.photos = self.list_images(folder)
         self.cfg["folder"] = folder
         if self.cfg["shuffle"]:
             random.shuffle(self.photos)
@@ -158,22 +166,62 @@ class WallpaperEngine(rumps.App):
         else:
             self.now_item.title = "No images in that folder"
 
+    def rescan_if_changed(self):
+        """Pick up photos added to / removed from the folder while running.
+
+        Returns True if the photo list changed. Keeps showing the current
+        photo; new photos are simply added to the rotation.
+        """
+        folder = self.cfg.get("folder")
+        if not folder or not os.path.isdir(folder):
+            return False
+        found = self.list_images(folder)
+        if set(found) == set(self.photos):
+            return False
+
+        current = (self.photos[self.pos]
+                   if self.photos and self.pos < len(self.photos) else None)
+        self.photos = found
+        if self.cfg["shuffle"]:
+            random.shuffle(self.photos)
+        if current in self.photos:
+            self.pos = self.photos.index(current)
+        elif self.photos:
+            self.pos %= len(self.photos)
+        else:
+            self.pos = 0
+        self.update_now_title()
+        return True
+
+    def update_now_title(self):
+        if self.photos:
+            path = self.photos[self.pos % len(self.photos)]
+            self.now_item.title = "Now: %s  (%d/%d)" % (
+                os.path.basename(path), (self.pos % len(self.photos)) + 1,
+                len(self.photos))
+        else:
+            self.now_item.title = "No images in that folder"
+
     def apply_current(self):
         if not self.photos:
             return
         self.pos %= len(self.photos)
-        path = self.photos[self.pos]
-        set_wallpaper(path)
-        self.now_item.title = "Now: %s  (%d/%d)" % (
-            os.path.basename(path), self.pos + 1, len(self.photos))
+        set_wallpaper(self.photos[self.pos])
+        self.update_now_title()
         self.save_config()
 
-    # ---------- timer ----------
+    # ---------- timers ----------
     def on_tick(self, _):
+        self.rescan_if_changed()
         if self.paused or not self.photos:
             return
         self.pos = (self.pos + 1) % len(self.photos)
         self.apply_current()
+
+    def on_scan_tick(self, _):
+        # Lightweight folder watch: notice new/removed photos without
+        # changing the current wallpaper.
+        self.rescan_if_changed()
 
     # ---------- menu callbacks ----------
     def on_choose_folder(self, _):
@@ -185,8 +233,18 @@ class WallpaperEngine(rumps.App):
         if self.cfg.get("folder"):
             subprocess.run(["open", self.cfg["folder"]], check=False)
 
+    def on_refresh(self, _):
+        # Re-read the folder now and jump to a fresh photo.
+        folder = self.cfg.get("folder")
+        if folder and os.path.isdir(folder):
+            self.rescan_if_changed()
+            if self.photos:
+                self.pos = (self.pos + 1) % len(self.photos)
+                self.apply_current()
+
     def on_next(self, _):
         if self.photos:
+            self.rescan_if_changed()
             self.pos = (self.pos + 1) % len(self.photos)
             self.apply_current()
 
