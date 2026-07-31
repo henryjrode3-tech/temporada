@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wallpaper Engine</title>
+<style>
+  :root {
+    --ui-bg: rgba(20, 20, 24, 0.72);
+    --ui-border: rgba(255, 255, 255, 0.14);
+    --text: #f4f4f6;
+    --muted: #a8a8b3;
+    --accent: #5ac8fa;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    cursor: default;
+  }
+
+  /* ---- Wallpaper layers (two stacked images for crossfade) ---- */
+  .stage { position: fixed; inset: 0; overflow: hidden; background: #000; }
+
+  .layer {
+    position: absolute;
+    inset: 0;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    opacity: 0;
+    transition: opacity 1.2s ease-in-out;
+    will-change: opacity;
+  }
+  .layer.visible { opacity: 1; }
+  body.fit-contain .layer { background-size: contain; }
+
+  /* subtle vignette so overlays stay readable */
+  .vignette {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.35) 100%);
+  }
+
+  /* ---- Battery indicator (top-right, like an OS status area) ---- */
+  .status-area {
+    position: fixed;
+    top: 18px;
+    right: 22px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 30;
+    user-select: none;
+  }
+
+  /* the photo badge that sits right next to the battery */
+  .photo-badge {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background-size: cover;
+    background-position: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.18) inset;
+    border: 1.5px solid rgba(255,255,255,0.35);
+    flex: none;
+  }
+  .photo-badge.empty { background: rgba(255,255,255,0.08); }
+
+  .battery {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--ui-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    padding: 7px 12px 7px 14px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+  .battery-pct { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
+
+  /* the little battery glyph */
+  .battery-glyph { position: relative; width: 30px; height: 15px; }
+  .battery-body {
+    position: absolute; inset: 0;
+    border: 1.6px solid var(--text);
+    border-radius: 4px;
+    opacity: 0.9;
+    overflow: hidden;
+  }
+  .battery-fill {
+    position: absolute; top: 1.5px; left: 1.5px; bottom: 1.5px;
+    width: 0%;
+    background: #4cd964;
+    border-radius: 2px;
+    transition: width 0.5s ease, background 0.4s ease;
+  }
+  .battery-cap {
+    position: absolute; right: -4px; top: 4px;
+    width: 3px; height: 7px;
+    background: var(--text);
+    opacity: 0.9;
+    border-radius: 0 2px 2px 0;
+  }
+  .battery-bolt {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    font-size: 11px;
+    color: #fff;
+    text-shadow: 0 0 3px rgba(0,0,0,0.6);
+  }
+  .battery.charging .battery-bolt { display: flex; }
+
+  /* ---- Controls panel ---- */
+  .panel {
+    position: fixed;
+    left: 22px;
+    bottom: 22px;
+    z-index: 40;
+    width: 300px;
+    max-width: calc(100vw - 44px);
+    background: var(--ui-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--ui-border);
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    transition: transform 0.35s cubic-bezier(.2,.8,.2,1), opacity 0.35s;
+  }
+  body.ui-hidden .panel { transform: translateY(140%); opacity: 0; pointer-events: none; }
+  body.ui-hidden .status-area { opacity: 0.85; }
+
+  .panel h1 {
+    font-size: 15px;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel .sub { font-size: 11.5px; color: var(--muted); margin-bottom: 14px; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%;
+    padding: 11px 14px;
+    background: var(--accent);
+    color: #04202b;
+    border: none;
+    border-radius: 11px;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.15s, transform 0.05s;
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:active { transform: scale(0.985); }
+  .btn.secondary {
+    background: rgba(255,255,255,0.09);
+    color: var(--text);
+    border: 1px solid var(--ui-border);
+    font-weight: 600;
+  }
+
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  .row .btn { width: auto; flex: 1; }
+
+  .field { margin-top: 14px; }
+  .field label { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+  .field-inline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  select {
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+    border: 1px solid var(--ui-border);
+    border-radius: 9px;
+    padding: 7px 9px;
+    font-size: 12.5px;
+    outline: none;
+  }
+  .switch { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .switch input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+  .count { font-size: 11.5px; color: var(--muted); margin-top: 12px; text-align: center; }
+  .count b { color: var(--text); }
+
+  .hint {
+    margin-top: 12px;
+    font-size: 10.8px;
+    line-height: 1.5;
+    color: var(--muted);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 10px;
+  }
+  kbd {
+    font-family: inherit;
+    background: rgba(255,255,255,0.12);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 10.5px;
+  }
+
+  /* ---- Empty state (drop zone) ---- */
+  .dropzone {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px;
+    background: radial-gradient(ellipse at center, #1a1a22 0%, #050507 100%);
+  }
+  .dropzone.hidden { display: none; }
+  .dropzone.dragging { outline: 3px dashed var(--accent); outline-offset: -20px; }
+  .dropzone .big { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+  .dropzone .small { color: var(--muted); font-size: 14px; max-width: 420px; line-height: 1.55; margin-bottom: 22px; }
+  .dropzone .icon { font-size: 60px; margin-bottom: 14px; }
+
+  .toast {
+    position: fixed; top: 74px; right: 22px; z-index: 50;
+    background: var(--ui-bg); backdrop-filter: blur(12px);
+    border: 1px solid var(--ui-border); border-radius: 10px;
+    padding: 9px 13px; font-size: 12.5px; color: var(--text);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    opacity: 0; transform: translateY(-8px); transition: opacity .3s, transform .3s;
+    pointer-events: none; max-width: 320px;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body class="ui-hidden">
+
+  <div class="stage">
+    <div class="layer" id="layerA"></div>
+    <div class="layer" id="layerB"></div>
+  </div>
+  <div class="vignette"></div>
+
+  <!-- Battery indicator + photo badge -->
+  <div class="status-area">
+    <div class="photo-badge empty" id="photoBadge" title="Now showing"></div>
+    <div class="battery" id="battery">
+      <span class="battery-pct" id="batteryPct">—</span>
+      <div class="battery-glyph">
+        <div class="battery-body">
+          <div class="battery-fill" id="batteryFill"></div>
+          <div class="battery-bolt">⚡</div>
+        </div>
+        <div class="battery-cap"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="panel" id="panel">
+    <h1>🖼️ Wallpaper Engine</h1>
+    <div class="sub">Photos from your folder, right by your battery.</div>
+
+    <button class="btn" id="pickBtn">📁 Choose photo folder</button>
+    <div class="row">
+      <button class="btn secondary" id="prevBtn">‹ Prev</button>
+      <button class="btn secondary" id="pauseBtn">⏸ Pause</button>
+      <button class="btn secondary" id="nextBtn">Next ›</button>
+    </div>
+
+    <div class="field">
+      <label>Change every <span id="intervalLabel">10s</span></label>
+      <input type="range" id="intervalRange" min="3" max="120" step="1" value="10">
+    </div>
+
+    <div class="field field-inline">
+      <label style="margin:0">Fit</label>
+      <select id="fitSelect">
+        <option value="cover">Fill screen (cover)</option>
+        <option value="contain">Fit whole photo</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="switch"><input type="checkbox" id="shuffleChk" checked> Shuffle order</label>
+    </div>
+
+    <div class="count" id="count">No photos loaded yet.</div>
+
+    <div class="hint">
+      <kbd>←</kbd> <kbd>→</kbd> change · <kbd>Space</kbd> pause · <kbd>H</kbd> hide panel · <kbd>F</kbd> fullscreen
+    </div>
+  </div>
+
+  <!-- Empty / drop state -->
+  <div class="dropzone" id="dropzone">
+    <div class="icon">🖼️</div>
+    <div class="big">Wallpaper Engine</div>
+    <div class="small">
+      Choose a folder of photos (or drag &amp; drop images here).
+      They'll rotate as your wallpaper, with a live thumbnail sitting
+      right next to your battery indicator.
+    </div>
+    <button class="btn" id="pickBtnBig" style="width:auto; padding:13px 26px;">📁 Choose photo folder</button>
+    <input type="file" id="fileInput" accept="image/*" multiple webkitdirectory style="display:none">
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- State ----------
+  const IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "svg"];
+  let photos = [];          // array of object URLs (or {url})
+  let order = [];           // indices into photos, possibly shuffled
+  let pos = 0;              // position within order
+  let timer = null;
+  let paused = false;
+  let activeLayer = "A";
+  let dirHandle = null;     // FileSystemDirectoryHandle when available
+
+  let settings = load();
+
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const layerA = $("layerA"), layerB = $("layerB");
+  const badge = $("photoBadge");
+  const dropzone = $("dropzone");
+  const countEl = $("count");
+  const intervalRange = $("intervalRange"), intervalLabel = $("intervalLabel");
+  const fitSelect = $("fitSelect"), shuffleChk = $("shuffleChk");
+
+  // Apply saved settings to controls
+  intervalRange.value = settings.interval;
+  intervalLabel.textContent = settings.interval + "s";
+  fitSelect.value = settings.fit;
+  shuffleChk.checked = settings.shuffle;
+  document.body.classList.toggle("fit-contain", settings.fit === "contain");
+
+  // ---------- Settings persistence ----------
+  function load() {
+    let s = {};
+    try { s = JSON.parse(localStorage.getItem("wp-settings") || "{}"); } catch (e) {}
+    return {
+      interval: s.interval || 10,
+      fit: s.fit || "cover",
+      shuffle: s.shuffle !== undefined ? s.shuffle : true,
+    };
+  }
+  function save() {
+    localStorage.setItem("wp-settings", JSON.stringify(settings));
+  }
+
+  // ---------- Folder handle persistence (IndexedDB) ----------
+  function idb(mode, fn) {
+    return new Promise((resolve, reject) => {
+      const open = indexedDB.open("wp-db", 1);
+      open.onupgradeneeded = () => open.result.createObjectStore("handles");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const tx = open.result.transaction("handles", mode);
+        const store = tx.objectStore("handles");
+        const req = fn(store);
+        tx.oncomplete = () => resolve(req && req.result);
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+  }
+  const saveHandle = (h) => idb("readwrite", (s) => s.put(h, "dir")).catch(() => {});
+  const getHandle = () => idb("readonly", (s) => s.get("dir")).catch(() => null);
+
+  // ---------- Loading photos ----------
+  function isImage(name) {
+    const ext = name.split(".").pop().toLowerCase();
+    return IMAGE_EXTS.includes(ext);
+  }
+
+  async function loadFromDirHandle(handle) {
+    const files = [];
+    for await (const entry of handle.values()) {
+      if (entry.kind === "file" && isImage(entry.name)) {
+        files.push(entry);
+      }
+    }
+    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const urls = [];
+    for (const entry of files) {
+      const file = await entry.getFile();
+      urls.push(URL.createObjectURL(file));
+    }
+    setPhotos(urls);
+  }
+
+  function loadFromFileList(fileList) {
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/") || isImage(f.name));
+    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    setPhotos(files.map((f) => URL.createObjectURL(f)));
+  }
+
+  function setPhotos(urls) {
+    // release old object URLs
+    photos.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) {} });
+    photos = urls;
+    if (!photos.length) {
+      toast("No images found in that folder.");
+      return;
+    }
+    buildOrder();
+    pos = 0;
+    dropzone.classList.add("hidden");
+    document.body.classList.remove("ui-hidden");
+    showCurrent(true);
+    restartTimer();
+    updateCount();
+  }
+
+  function buildOrder() {
+    order = photos.map((_, i) => i);
+    if (settings.shuffle) {
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+    }
+  }
+
+  // ---------- Display / crossfade ----------
+  function showCurrent(immediate) {
+    if (!photos.length) return;
+    const url = photos[order[pos]];
+    const incoming = activeLayer === "A" ? layerB : layerA;
+    const outgoing = activeLayer === "A" ? layerA : layerB;
+
+    incoming.style.backgroundImage = `url("${cssEscape(url)}")`;
+    // force reflow so the transition applies
+    void incoming.offsetWidth;
+    incoming.classList.add("visible");
+    outgoing.classList.remove("visible");
+    activeLayer = activeLayer === "A" ? "B" : "A";
+
+    badge.style.backgroundImage = `url("${cssEscape(url)}")`;
+    badge.classList.remove("empty");
+    updateCount();
+  }
+
+  function cssEscape(url) { return url.replace(/"/g, '\\"'); }
+
+  function next() { if (!photos.length) return; pos = (pos + 1) % order.length; showCurrent(); }
+  function prev() { if (!photos.length) return; pos = (pos - 1 + order.length) % order.length; showCurrent(); }
+
+  function restartTimer() {
+    clearInterval(timer);
+    if (paused || photos.length < 2) return;
+    timer = setInterval(next, settings.interval * 1000);
+  }
+
+  function updateCount() {
+    if (!photos.length) { countEl.textContent = "No photos loaded yet."; return; }
+    countEl.innerHTML = `Showing <b>${pos + 1}</b> of <b>${photos.length}</b>` +
+      (paused ? " · paused" : "");
+  }
+
+  // ---------- Picking a folder ----------
+  async function pickFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        const handle = await window.showDirectoryPicker({ id: "wallpapers", mode: "read" });
+        dirHandle = handle;
+        await saveHandle(handle);
+        await loadFromDirHandle(handle);
+        toast("Folder linked — drop new photos in anytime, then hit Refresh.");
+        ensureRefreshButton();
+      } catch (e) {
+        if (e && e.name !== "AbortError") toast("Could not open folder: " + e.message);
+      }
+    } else {
+      // Fallback: hidden <input webkitdirectory>
+      $("fileInput").click();
+    }
+  }
+
+  async function refreshFolder() {
+    if (dirHandle) {
+      try {
+        const perm = await dirHandle.queryPermission({ mode: "read" });
+        if (perm !== "granted") await dirHandle.requestPermission({ mode: "read" });
+        await loadFromDirHandle(dirHandle);
+        toast("Refreshed.");
+      } catch (e) { toast("Refresh failed: " + e.message); }
+    }
+  }
+
+  let refreshAdded = false;
+  function ensureRefreshButton() {
+    if (refreshAdded || !window.showDirectoryPicker) return;
+    refreshAdded = true;
+    const btn = document.createElement("button");
+    btn.className = "btn secondary";
+    btn.textContent = "🔄 Refresh folder";
+    btn.style.marginTop = "10px";
+    btn.addEventListener("click", refreshFolder);
+    countEl.parentNode.insertBefore(btn, countEl);
+  }
+
+  // Try to restore a previously linked folder on load
+  async function tryRestore() {
+    if (!window.showDirectoryPicker) return;
+    const handle = await getHandle();
+    if (!handle) return;
+    try {
+      const perm = await handle.queryPermission({ mode: "read" });
+      if (perm === "granted") {
+        dirHandle = handle;
+        ensureRefreshButton();
+        await loadFromDirHandle(handle);
+      } else {
+        // Permission needs a user gesture — show a resume prompt
+        showResume(handle);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function showResume(handle) {
+    const b = $("pickBtnBig");
+    b.textContent = "▶ Resume last folder";
+    b.onclick = async () => {
+      try {
+        const perm = await handle.requestPermission({ mode: "read" });
+        if (perm === "granted") {
+          dirHandle = handle;
+          ensureRefreshButton();
+          await loadFromDirHandle(handle);
+        } else { pickFolder(); }
+      } catch (e) { pickFolder(); }
+    };
+  }
+
+  // ---------- Battery indicator ----------
+  function setBattery(level, charging) {
+    const pct = Math.round(level * 100);
+    $("batteryPct").textContent = pct + "%";
+    const fill = $("batteryFill");
+    fill.style.width = Math.max(4, pct) + "%";
+    let color = "#4cd964";                 // green
+    if (pct <= 20) color = "#ff3b30";      // red
+    else if (pct <= 40) color = "#ffcc00"; // yellow
+    fill.style.background = charging ? "#4cd964" : color;
+    $("battery").classList.toggle("charging", !!charging);
+  }
+
+  async function initBattery() {
+    if (navigator.getBattery) {
+      try {
+        const bat = await navigator.getBattery();
+        const update = () => setBattery(bat.level, bat.charging);
+        update();
+        bat.addEventListener("levelchange", update);
+        bat.addEventListener("chargingchange", update);
+        return;
+      } catch (e) { /* fall through */ }
+    }
+    // Battery API unavailable (Firefox/Safari) — show a friendly placeholder.
+    $("batteryPct").textContent = "N/A";
+    $("batteryFill").style.width = "100%";
+    $("batteryFill").style.background = "#8e8e93";
+    $("battery").title = "Battery info isn't available in this browser. Try Chrome or Edge.";
+  }
+
+  // ---------- Toast ----------
+  let toastTimer = null;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 3400);
+  }
+
+  // ---------- Events ----------
+  $("pickBtn").addEventListener("click", pickFolder);
+  $("pickBtnBig").addEventListener("click", pickFolder);
+  $("fileInput").addEventListener("change", (e) => loadFromFileList(e.target.files));
+
+  $("nextBtn").addEventListener("click", () => { next(); restartTimer(); });
+  $("prevBtn").addEventListener("click", () => { prev(); restartTimer(); });
+  $("pauseBtn").addEventListener("click", togglePause);
+
+  function togglePause() {
+    paused = !paused;
+    $("pauseBtn").textContent = paused ? "▶ Play" : "⏸ Pause";
+    restartTimer();
+    updateCount();
+  }
+
+  intervalRange.addEventListener("input", () => {
+    settings.interval = parseInt(intervalRange.value, 10);
+    intervalLabel.textContent = settings.interval + "s";
+    save();
+    restartTimer();
+  });
+
+  fitSelect.addEventListener("change", () => {
+    settings.fit = fitSelect.value;
+    document.body.classList.toggle("fit-contain", settings.fit === "contain");
+    save();
+  });
+
+  shuffleChk.addEventListener("change", () => {
+    settings.shuffle = shuffleChk.checked;
+    save();
+    if (photos.length) { buildOrder(); pos = 0; showCurrent(); }
+  });
+
+  // Drag & drop
+  ["dragenter", "dragover"].forEach((ev) =>
+    dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("dragging"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("dragging"); }));
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("dragging");
+    if (e.dataTransfer && e.dataTransfer.files.length) loadFromFileList(e.dataTransfer.files);
+  });
+
+  // Keyboard
+  window.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    switch (e.key) {
+      case "ArrowRight": next(); restartTimer(); break;
+      case "ArrowLeft": prev(); restartTimer(); break;
+      case " ": e.preventDefault(); togglePause(); break;
+      case "h": case "H": document.body.classList.toggle("ui-hidden"); break;
+      case "f": case "F":
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+        break;
+    }
+  });
+
+  // Auto-hide panel when idle over the wallpaper
+  let idleTimer = null;
+  document.addEventListener("mousemove", () => {
+    if (!photos.length) return;
+    document.body.classList.remove("ui-hidden");
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => document.body.classList.add("ui-hidden"), 3000);
+  });
+
+  // ---------- Boot ----------
+  initBattery();
+  tryRestore();
+})();
+</script>
+</body>
+</html>
