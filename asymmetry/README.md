@@ -222,6 +222,7 @@ asymmetry top [--limit N]      current ranking
 asymmetry show NAME            full report for one candidate
 asymmetry report               daily research report
 asymmetry second-order DRIVER  trace a trend upstream to its bottlenecks
+asymmetry ingest-github O/R    pull real commit history into the signal series
 asymmetry sources              sources, tiers, and what is deliberately absent
 asymmetry serve                start the API
 ```
@@ -229,7 +230,7 @@ asymmetry serve                start the API
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest      # 217 tests
+cd backend && .venv/bin/python -m pytest      # 231 tests
 ```
 
 They run on SQLite, so no database server is needed. They cover the financial

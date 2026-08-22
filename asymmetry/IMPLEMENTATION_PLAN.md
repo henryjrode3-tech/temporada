@@ -22,7 +22,7 @@ are noted below.
 | FastAPI + rate limiting + API-key guard | ✅ | `api/app.py` |
 | Next.js dashboard | ✅ | `frontend/` |
 | CLI | ✅ | `cli.py` |
-| Test suite (217 tests) | ✅ | `tests/` |
+| Test suite (231 tests) | ✅ | `tests/` |
 
 **Deviation 1 — the scenario engine was pulled forward from Phase 4.** It is
 pure arithmetic with no dependencies, it is what makes every other number
@@ -65,7 +65,7 @@ mode, so the backtest would silently run on a fraction of the data.
 | Thesis tracker with monitored conditions | ✅ | Conditions individually falsifiable |
 | Rank movement + explanation | ✅ | `core/movement.py` - attributes change to the dimensions that moved, using the weights in force at the time |
 | Alerts (§35) | ⬜ | Thresholds defined; no delivery mechanism |
-| Live source ingestion into signal series | ⬜ | Series are synthetic; wiring GitHub/USASpending/PatentsView is the next real task |
+| Live source ingestion into signal series | 🟡 | GitHub commit/contributor history wired end to end (`sources/github_activity.py`, `asymmetry ingest-github`). USASpending and PatentsView still to do. |
 
 ---
 
@@ -117,8 +117,10 @@ and are labelled as such in the code.
 1. **Scenario probabilities are guesses.** 40/35/20/5 is a reasonable prior for
    speculative small companies, not a measured distribution. Expected values
    inherit that uncertainty entirely.
-2. **Signal series are synthetic.** Detection is tested and correct; it is not
-   yet fed by live data.
+2. **Signal series are mostly synthetic.** GitHub developer activity is wired
+   to real data; hiring, patents and contracts are not yet. Note also that
+   GitHub serves a rolling 52-week window rather than an archive, so it
+   supports live detection but cannot support a historical backtest.
 3. **No point-in-time market data**, so backtesting is not yet meaningful.
 4. **Heuristic fallbacks are shallow by design.** Without an API key the
    qualitative dimensions fall back to proxies (gross margin for technology
@@ -133,7 +135,7 @@ and are labelled as such in the code.
 
 ## Next three tasks, in order
 
-1. **Wire one live signal source end to end** — GitHub repository activity into
-   the signal series — so acceleration detection runs on real data.
+1. **Wire USASpending and PatentsView** — both are free APIs with real history,
+   unlike GitHub's rolling window, so they would also serve the backtest.
 2. **Alert delivery** on the thresholds already defined in section 35.
 3. **Recursive query expansion** so discovery walks into domains nobody listed.

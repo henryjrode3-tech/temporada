@@ -272,6 +272,71 @@ def serve(
     )
 
 
+@app.command("ingest-github")
+def ingest_github(
+    repo: str = typer.Argument(..., help="GitHub repository as owner/name."),
+    candidate: str = typer.Option("", help="Attach the series to this candidate."),
+) -> None:
+    """Pull real weekly commit and contributor history from GitHub.
+
+    Replaces synthetic series with actual developer activity, so acceleration
+    detection runs on real data. Note that GitHub serves a rolling 52-week
+    window rather than an archive, so this supports live detection but cannot
+    support a historical backtest.
+    """
+    from .core.signals import SignalType, TimeSeriesPoint, detect_acceleration
+    from .sources.github_activity import (
+        GitHubActivityError,
+        activity_to_series,
+        fetch_repo_activity,
+    )
+
+    try:
+        activity = fetch_repo_activity(repo)
+    except GitHubActivityError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    except Exception as exc:
+        console.print(f"[red]Could not reach the GitHub API: {exc}[/red]")
+        console.print("[dim]Some networks block api.github.com. "
+                      "Set GITHUB_TOKEN to raise rate limits.[/dim]")
+        raise typer.Exit(1)
+
+    series = activity_to_series(activity)
+    console.print(
+        f"[green]{activity.full_name}[/green]: {activity.stars:,} stars, "
+        f"{len(activity.commit_series)} weeks of commit history."
+    )
+    if not activity.has_history:
+        console.print("[yellow]Too little history to detect acceleration.[/yellow]")
+        raise typer.Exit(0)
+
+    for name, points in series.items():
+        ts = [TimeSeriesPoint(date.fromisoformat(d), v) for d, v in points]
+        signal = detect_acceleration(SignalType(name), ts)
+        if signal:
+            console.print(f"  [bold]{name}[/bold]: {signal.description}")
+        else:
+            console.print(f"  [dim]{name}: no acceleration detected[/dim]")
+
+    if candidate:
+        with session_scope() as s:
+            cand = (
+                s.query(m.Candidate)
+                .filter((m.Candidate.name.ilike(f"%{candidate}%"))
+                        | (m.Candidate.ticker == candidate.upper()))
+                .first()
+            )
+            if cand is None:
+                console.print(f"[red]No candidate matching {candidate!r}.[/red]")
+                raise typer.Exit(1)
+            extra = dict(cand.extra or {})
+            extra.setdefault("series", {}).update(series)
+            extra["github_repo"] = activity.full_name
+            cand.extra = extra
+        console.print(f"[green]Attached to {candidate}. Re-run `asymmetry run`.[/green]")
+
+
 @app.command("second-order")
 def second_order(
     driver: str = typer.Argument("AI compute demand", help="Trend to trace upstream from."),
