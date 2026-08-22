@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from typing import Any
-from urllib.parse import quote_plus
 
 import httpx
 

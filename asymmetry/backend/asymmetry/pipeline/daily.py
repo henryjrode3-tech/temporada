@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..agents import (
@@ -26,10 +25,9 @@ from ..agents import (
     DebateJudgeAgent,
     FactCheckerAgent,
     ThesisAgent,
-    dedupe_key,
 )
 from ..config import get_settings
-from ..core.alerts import AlertThresholds, CandidateSnapshot, evaluate as evaluate_alerts, sort_alerts
+from ..core.alerts import CandidateSnapshot, evaluate as evaluate_alerts, sort_alerts
 from ..core.hype import analyse_hype
 from ..core.movement import explain_movement
 from ..core.redflags import FinancialSnapshot, detect_red_flags

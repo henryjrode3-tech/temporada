@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import date
 from typing import Any
 
 from ..llm.client import Tier

@@ -17,8 +17,8 @@ per-share     market-cap growth adjusted for share count growth. What a holder
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import Iterable, Sequence
+from dataclasses import dataclass
+from typing import Sequence
 
 # A market cap of zero is not a number we can divide by, and a "multiple"
 # against a zero baseline is meaningless rather than infinite.
