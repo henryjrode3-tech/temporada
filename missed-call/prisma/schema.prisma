@@ -1,0 +1,367 @@
+// Missed-call recovery for local plumbing businesses.
+//
+// Own database (`missedcall`). Shares nothing with any other project here.
+//
+// Two structural choices worth noting:
+//   * Event is append-only. Every state change writes one, so the Activity
+//     timeline is a record rather than a reconstruction.
+//   * businessId threads through everything even though the MVP has a single
+//     business, because retrofitting multi-tenancy is far harder than carrying
+//     the column from the start.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFYING
+  QUALIFIED
+  APPOINTMENT_REQUESTED
+  BOOKED
+  HUMAN_REVIEW
+  CLOSED
+  LOST
+}
+
+enum Urgency {
+  EMERGENCY // safety risk or active damage: same-day
+  HIGH // no water / no hot water: within 24h
+  MEDIUM // degraded but usable
+  LOW // cosmetic or routine
+  UNKNOWN // not yet established
+}
+
+enum SenderType {
+  CUSTOMER
+  AI
+  HUMAN
+  SYSTEM
+}
+
+enum ConversationMode {
+  AI // agent replies
+  HUMAN // owner has taken over; agent is silent
+  PAUSED // agent globally paused
+}
+
+enum ConversationStatus {
+  ACTIVE
+  AWAITING_CUSTOMER
+  ESCALATED
+  CLOSED
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum EventType {
+  MISSED_CALL
+  SMS_SENT
+  CUSTOMER_REPLIED
+  AI_MESSAGE_SENT
+  LEAD_QUALIFIED
+  APPOINTMENT_REQUESTED
+  APPOINTMENT_BOOKED
+  APPOINTMENT_UNAVAILABLE
+  HUMAN_TAKEOVER
+  HUMAN_RELEASED
+  FOLLOWUP_SENT
+  ESCALATED
+  AI_ERROR
+  SAFETY_INTERCEPT
+}
+
+enum LeadSource {
+  MISSED_CALL
+  WEB_FORM
+  MANUAL
+  REFERRAL
+}
+
+// ---------------------------------------------------------------------------
+// Core
+// ---------------------------------------------------------------------------
+
+model Business {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  email     String?
+  address   String
+  city      String
+  state     String
+  zip       String
+  timezone  String   @default("America/Los_Angeles")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings      BusinessSettings?
+  agentSettings AgentSettings?
+  services      Service[]
+  hours         BusinessHours[]
+  customers     Customer[]
+  leads         Lead[]
+  conversations Conversation[]
+  appointments  Appointment[]
+  events        Event[]
+  slots         AvailabilitySlot[]
+
+  @@map("businesses")
+}
+
+model BusinessSettings {
+  id         String @id @default(cuid())
+  businessId String @unique
+
+  serviceArea      String
+  serviceRadiusMi  Int    @default(25)
+  emergencyRules   String @db.Text
+  bookingRules     String @db.Text
+  aiBehaviorNotes  String @db.Text
+  escalationRules  String @db.Text
+  greetingTemplate String @db.Text
+  followUpTemplate String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("business_settings")
+}
+
+model AgentSettings {
+  id         String @id @default(cuid())
+  businessId String @unique
+
+  status               String  @default("ACTIVE") // ACTIVE | PAUSED
+  humanTakeoverEnabled Boolean @default(true)
+  autoFollowUpEnabled  Boolean @default(true)
+  followUpDelayMinutes Int     @default(120)
+  maxFollowUps         Int     @default(2)
+  // Below this confidence the agent hands off rather than guessing.
+  escalationThreshold  Float   @default(0.55)
+  emergencyEscalation  Boolean @default(true)
+  maxAiTurns           Int     @default(20)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("agent_settings")
+}
+
+model Service {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String
+  slug       String
+  // Labelled "estimated value" everywhere it surfaces. Not revenue.
+  estimatedValue Int
+  isEmergency    Boolean @default(false)
+  active         Boolean @default(true)
+  description    String?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  leads    Lead[]
+
+  @@unique([businessId, slug])
+  @@map("services")
+}
+
+model BusinessHours {
+  id         String  @id @default(cuid())
+  businessId String
+  dayOfWeek  Int // 0 = Sunday
+  openMinute Int? // minutes from midnight; null = closed
+  closeMinute Int?
+  isClosed   Boolean @default(false)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, dayOfWeek])
+  @@map("business_hours")
+}
+
+model Customer {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String
+  phone      String
+  email      String?
+  address    String?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  leads         Lead[]
+  conversations Conversation[]
+  appointments  Appointment[]
+
+  @@unique([businessId, phone])
+  @@index([businessId])
+  @@map("customers")
+}
+
+model Lead {
+  id         String @id @default(cuid())
+  businessId String
+  customerId String
+
+  serviceId      String?
+  serviceType    String?
+  description    String? @db.Text
+  urgency        Urgency    @default(UNKNOWN)
+  address        String?
+  preferredTime  String?
+  status         LeadStatus @default(NEW)
+  source         LeadSource @default(MISSED_CALL)
+  estimatedValue Int        @default(0)
+  assignedTo     String?
+  // Why the agent handed off, when it did.
+  escalationReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  service      Service?      @relation(fields: [serviceId], references: [id])
+  conversation Conversation?
+  appointments Appointment[]
+  events       Event[]
+
+  @@index([businessId, status])
+  @@index([businessId, createdAt])
+  @@map("leads")
+}
+
+model Conversation {
+  id         String @id @default(cuid())
+  businessId String
+  customerId String
+  leadId     String @unique
+
+  mode   ConversationMode   @default(AI)
+  status ConversationStatus @default(ACTIVE)
+
+  // Bounds the agent so a loop cannot run indefinitely.
+  aiTurnCount    Int       @default(0)
+  followUpCount  Int       @default(0)
+  lastMessageAt  DateTime?
+  takenOverAt    DateTime?
+  takenOverBy    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([businessId, status])
+  @@map("conversations")
+}
+
+model Message {
+  id             String @id @default(cuid())
+  conversationId String
+
+  sender  SenderType
+  message String     @db.Text
+  // Set when the message was delivered through an SMS provider.
+  channel String     @default("sms")
+  // Retained so a transcript can show what the agent was thinking.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model AvailabilitySlot {
+  id         String   @id @default(cuid())
+  businessId String
+  startsAt   DateTime
+  endsAt     DateTime
+  isBooked   Boolean  @default(false)
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([businessId, startsAt])
+  @@index([businessId, startsAt])
+  @@map("availability_slots")
+}
+
+model Appointment {
+  id         String @id @default(cuid())
+  businessId String
+  customerId String
+  leadId     String
+  slotId     String?
+
+  startsAt       DateTime
+  endsAt         DateTime
+  status         AppointmentStatus @default(REQUESTED)
+  serviceType    String?
+  notes          String?           @db.Text
+  estimatedValue Int               @default(0)
+  // Set once a calendar provider acknowledges the booking.
+  externalRef    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lead     Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  slot     AvailabilitySlot? @relation(fields: [slotId], references: [id])
+
+  @@index([businessId, startsAt])
+  @@map("appointments")
+}
+
+model Event {
+  id         String @id @default(cuid())
+  businessId String
+  leadId     String?
+
+  type    EventType
+  title   String
+  detail  String?   @db.Text
+  payload Json?
+
+  createdAt DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  lead     Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@index([leadId])
+  @@map("events")
+}
