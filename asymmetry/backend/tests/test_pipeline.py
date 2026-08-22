@@ -366,6 +366,20 @@ class TestApi:
         r = client.post("/api/portfolio/positions", json={"candidate_id": cid, "amount": -5})
         assert r.status_code == 422
 
+    def test_techgraph(self, client):
+        body = client.get("/api/techgraph").json()
+        assert body["nodes"] and body["drivers"] and body["bottlenecks"]
+
+    def test_second_order_endpoint(self, client):
+        body = client.get("/api/techgraph/second-order",
+                          params={"driver": "AI compute demand"}).json()
+        assert body["targets"] and body["chains"]
+        assert body["targets"][0]["depth"] >= 2
+
+    def test_second_order_unknown_driver_is_404(self, client):
+        r = client.get("/api/techgraph/second-order", params={"driver": "nonsense"})
+        assert r.status_code == 404
+
     def test_daily_report(self, client):
         body = client.get("/api/reports/daily").json()
         assert "disclaimer" in body and "new_discoveries" in body

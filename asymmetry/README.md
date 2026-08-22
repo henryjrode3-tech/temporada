@@ -116,6 +116,28 @@ Itemised, never a mystery subtraction.
 **8. The no-hype rule.** Promotional language is measured and penalised, and
 only *measurable* evidence forgives it — and never entirely.
 
+**9. Second-order search.** The obvious way to express a trend is crowded and
+therefore expensive. The technology graph traces a driver upstream to what it
+cannot proceed without:
+
+```
+$ asymmetry second-order "AI compute demand"
+
+AI compute demand -> data centre capacity -> electrical power
+                  -> grid capacity -> high-voltage transformers
+                  -> grain-oriented electrical steel
+
+ Depth  Node                             Bottleneck
+     5  grain-oriented electrical steel  yes
+     4  high-voltage transformers        yes
+     3  semiconductor metrology          yes
+```
+
+Depth is the signal: the further from the driver, the less of the narrative is
+already in the price. Note that depth is relative to a *driver* — grid capacity
+is a first-order electrification play and a third-order AI play at the same
+time.
+
 ---
 
 ## Two numbers that never mix
@@ -191,6 +213,7 @@ asymmetry run [--limit N] [--as-of YYYY-MM-DD]
 asymmetry top [--limit N]      current ranking
 asymmetry show NAME            full report for one candidate
 asymmetry report               daily research report
+asymmetry second-order DRIVER  trace a trend upstream to its bottlenecks
 asymmetry sources              sources, tiers, and what is deliberately absent
 asymmetry serve                start the API
 ```
@@ -198,7 +221,7 @@ asymmetry serve                start the API
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest      # 155 tests
+cd backend && .venv/bin/python -m pytest      # 203 tests
 ```
 
 They run on SQLite, so no database server is needed. They cover the financial

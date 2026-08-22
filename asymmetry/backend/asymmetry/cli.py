@@ -264,6 +264,47 @@ def serve(
     )
 
 
+@app.command("second-order")
+def second_order(
+    driver: str = typer.Argument("AI compute demand", help="Trend to trace upstream from."),
+    min_depth: int = typer.Option(2, help="How far from the driver to start looking."),
+) -> None:
+    """Trace a trend upstream to the unglamorous things it depends on.
+
+    When a trend is obvious, the obvious way to express it is crowded. The
+    interesting position is usually several layers upstream, in something the
+    trend cannot proceed without.
+    """
+    from .core.techgraph import TechGraph
+
+    graph = TechGraph()
+    if graph.get(driver) is None:
+        console.print(f"[red]Unknown node {driver!r}.[/red] Known drivers:")
+        for d in graph.to_dict()["drivers"]:
+            console.print(f"  - {d}")
+        raise typer.Exit(1)
+
+    console.print(Panel.fit(
+        "\n".join(" -> ".join(c) for c in graph.chain_from(driver)[:6]),
+        title=f"Dependency chains from {driver}",
+    ))
+
+    table = Table(title="Second-order candidates (further = less likely to be priced in)")
+    for col in ("Depth", "Node", "Bottleneck", "Why"):
+        table.add_column(col, justify="right" if col == "Depth" else "left")
+    for t in graph.second_order_targets(driver, min_depth=min_depth)[:10]:
+        table.add_row(
+            str(t["depth"]), t["name"],
+            "[yellow]yes[/yellow]" if t["is_bottleneck"] else "-",
+            t["description"] or t["category"],
+        )
+    console.print(table)
+
+    console.print("\n[bold]Discovery queries[/bold]")
+    for q in graph.discovery_queries(driver, limit=8):
+        console.print(f"  - {q}")
+
+
 @app.command()
 def sources() -> None:
     """List configured sources and what each is trusted for."""

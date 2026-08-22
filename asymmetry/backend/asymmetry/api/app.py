@@ -257,6 +257,33 @@ def list_sectors(db: Session = Depends(get_db)) -> list[str]:
     return sorted(r[0] for r in rows)
 
 
+@app.get("/api/techgraph")
+def tech_graph() -> dict[str, Any]:
+    """The technology dependency graph (section 37)."""
+    from ..core.techgraph import TechGraph
+
+    return TechGraph().to_dict()
+
+
+@app.get("/api/techgraph/second-order")
+def second_order(
+    driver: str = Query("AI compute demand"),
+    min_depth: int = Query(2, ge=0, le=6),
+) -> dict[str, Any]:
+    """Trace a trend upstream to what it depends on (section 38)."""
+    from ..core.techgraph import TechGraph
+
+    graph = TechGraph()
+    if graph.get(driver) is None:
+        raise HTTPException(status_code=404, detail=f"unknown node: {driver}")
+    return {
+        "driver": driver,
+        "chains": graph.chain_from(driver),
+        "targets": graph.second_order_targets(driver, min_depth=min_depth),
+        "queries": graph.discovery_queries(driver),
+    }
+
+
 @app.get("/api/reports/daily")
 def daily_report(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Assemble the daily research report (section 34).

@@ -22,7 +22,7 @@ are noted below.
 | FastAPI + rate limiting + API-key guard | ✅ | `api/app.py` |
 | Next.js dashboard | ✅ | `frontend/` |
 | CLI | ✅ | `cli.py` |
-| Test suite (155 tests) | ✅ | `tests/` |
+| Test suite (203 tests) | ✅ | `tests/` |
 
 **Deviation 1 — the scenario engine was pulled forward from Phase 4.** It is
 pure arithmetic with no dependencies, it is what makes every other number
@@ -51,7 +51,8 @@ mode, so the backtest would silently run on a fraction of the data.
 | **Remaining** | | |
 | Recursive query expansion into new domains | ⬜ | Generator exists; the recursion loop does not |
 | Weekly "unknown unknown" sweep (§39) | ⬜ | Needs a scheduler |
-| Second-order chain traversal (§38) | 🟡 | Future agent reasons about chains; no graph traversal yet |
+| Second-order chain traversal (§38) | ✅ | `core/techgraph.py` - real graph traversal, depth ranking, query generation |
+| Technology graph (§37) | ✅ | 19 nodes, 8 bottlenecks, `asymmetry second-order` + two API endpoints |
 
 ---
 
