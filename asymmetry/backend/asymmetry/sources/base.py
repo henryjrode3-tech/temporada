@@ -7,7 +7,8 @@ trustworthiness and rate limits, and the framework enforces both.
 Legal and ethical constraints are part of the interface rather than a matter of
 individual diligence: a source declares whether it is an official API, states
 its rate limit, and the fetcher honours it. Sources that would require evading
-access controls are not implemented.
+access controls are not implemented; the register of what was excluded and why
+is in ``sources/__init__.py`` and is printed by ``asymmetry sources``.
 """
 
 from __future__ import annotations

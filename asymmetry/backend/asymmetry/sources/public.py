@@ -42,9 +42,35 @@ class ArxivSource(Source):
     tier = SourceTier.GOVERNMENT       # peer-reviewed / preprint academic record
     rate_limit_per_hour = 1200         # arXiv asks for ~1 request per 3 seconds
 
+    @staticmethod
+    def build_query(query: str, as_of: date | None = None) -> str:
+        """Construct the ``search_query`` value.
+
+        arXiv's parser accepts a quoted phrase OR a date range, but returns
+        nothing at all when given both, so the two cases are built differently:
+        a phrase search when there is no cutoff, AND-joined terms when there is.
+
+        Pushing the cutoff into the query matters. Without it the API returns
+        only the newest papers, the framework's safety filter then discards
+        every one of them, and historical mode silently yields nothing rather
+        than the papers that actually existed at the time.
+        """
+        terms = [t for t in query.strip().split() if t]
+        if not terms:
+            return ""
+        if as_of:
+            joined = " AND ".join(f"all:{t}" for t in terms)
+            return f"{joined} AND submittedDate:[199101010000 TO {as_of.strftime('%Y%m%d')}0000]"
+        if len(terms) > 1:
+            return f'all:"{query.strip()}"'
+        return f"all:{terms[0]}"
+
     def fetch(self, query: str, *, limit: int = 25, as_of: date | None = None) -> list[dict[str, Any]]:
+        search = self.build_query(query, as_of)
+        if not search:
+            return []
         params = {
-            "search_query": f"all:{query}",
+            "search_query": search,
             "start": 0,
             "max_results": min(limit, 100),
             "sortBy": "submittedDate",
