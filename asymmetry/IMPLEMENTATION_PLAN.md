@@ -22,7 +22,7 @@ are noted below.
 | FastAPI + rate limiting + API-key guard | ✅ | `api/app.py` |
 | Next.js dashboard | ✅ | `frontend/` |
 | CLI | ✅ | `cli.py` |
-| Test suite (231 tests) | ✅ | `tests/` |
+| Test suite (257 tests) | ✅ | `tests/` |
 
 **Deviation 1 — the scenario engine was pulled forward from Phase 4.** It is
 pure arithmetic with no dependencies, it is what makes every other number
@@ -64,7 +64,7 @@ mode, so the backtest would silently run on a fraction of the data.
 | Historical score tracking | ✅ | Append-only |
 | Thesis tracker with monitored conditions | ✅ | Conditions individually falsifiable |
 | Rank movement + explanation | ✅ | `core/movement.py` - attributes change to the dimensions that moved, using the weights in force at the time |
-| Alerts (§35) | ⬜ | Thresholds defined; no delivery mechanism |
+| Alerts (§35) | ✅ | `core/alerts.py` - fires on transitions, not states, so a standing condition never re-fires. Wired into the pipeline and CLI. Delivery (email/webhook) still out of scope. |
 | Live source ingestion into signal series | 🟡 | GitHub commit/contributor history wired end to end (`sources/github_activity.py`, `asymmetry ingest-github`). USASpending and PatentsView still to do. |
 
 ---
@@ -137,5 +137,6 @@ and are labelled as such in the code.
 
 1. **Wire USASpending and PatentsView** — both are free APIs with real history,
    unlike GitHub's rolling window, so they would also serve the backtest.
-2. **Alert delivery** on the thresholds already defined in section 35.
+2. **Alert delivery** — the rules exist and fire correctly; routing them to
+   email or a webhook does not.
 3. **Recursive query expansion** so discovery walks into domains nobody listed.

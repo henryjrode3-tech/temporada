@@ -29,6 +29,7 @@ from ..agents import (
     dedupe_key,
 )
 from ..config import get_settings
+from ..core.alerts import AlertThresholds, CandidateSnapshot, evaluate as evaluate_alerts, sort_alerts
 from ..core.hype import analyse_hype
 from ..core.movement import explain_movement
 from ..core.redflags import FinancialSnapshot, detect_red_flags
@@ -432,6 +433,20 @@ class Pipeline:
                     payload=res.payload,
                 ))
 
+    def _snapshot_for_alerts(self, cand: m.Candidate) -> CandidateSnapshot:
+        thesis = (
+            self.session.query(m.Thesis)
+            .filter(m.Thesis.candidate_id == cand.id)
+            .order_by(m.Thesis.created_at.desc()).first()
+        )
+        return CandidateSnapshot(
+            candidate_id=cand.id, name=cand.name, rank=cand.rank,
+            overall_score=cand.overall_score, asymmetry_score=cand.asymmetry_score,
+            risk_score=cand.risk_score, red_flag_score=cand.red_flag_score,
+            verdict=cand.verdict, revenue_growth=cand.revenue_growth,
+            thesis_status=thesis.status if thesis else None,
+        )
+
     def _record_run(self, agent_name: str, candidate_id: str, res: AgentResult) -> None:
         self.session.add(m.AgentRun(
             agent_name=agent_name, candidate_id=candidate_id,
@@ -631,6 +646,8 @@ class Pipeline:
 
         try:
             candidates = self.session.query(m.Candidate).all()
+            # Snapshot before anything changes, so alerts compare like with like.
+            before = {c.id: self._snapshot_for_alerts(c) for c in candidates}
             screen = self.stage1_screen(candidates)
             self.session.flush()
 
@@ -657,6 +674,17 @@ class Pipeline:
             invalidated = self.check_theses()
             movements = self.rerank()
 
+            alerts = []
+            for cand in self.session.query(m.Candidate).filter(
+                m.Candidate.overall_score.isnot(None)
+            ):
+                alerts.extend(evaluate_alerts(
+                    before.get(cand.id),
+                    self._snapshot_for_alerts(cand),
+                    when=self.as_of or date.today(),
+                ))
+            alerts = sort_alerts(alerts)
+
             signals_count = self.session.query(m.Signal).count()
             run.finished_at = datetime.now(timezone.utc)
             run.status = "ok"
@@ -670,11 +698,13 @@ class Pipeline:
                 "theses_invalidated": len(invalidated),
                 "budget": self.llm.budget.summary(),
                 "llm_mode": self.settings.llm_mode,
+                "alerts": [a.to_dict() for a in alerts[:50]],
             }
             return {
                 "run_id": run.id, "analysed": len(analysed),
                 "rejected": len(screen.rejected), "invalidated": invalidated,
                 "movements": movements[:20], "budget": self.llm.budget.summary(),
+                "alerts": [a.to_dict() for a in alerts],
             }
         except Exception as exc:
             run.status = "error"

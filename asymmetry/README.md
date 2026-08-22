@@ -116,7 +116,19 @@ Itemised, never a mystery subtraction.
 **8. The no-hype rule.** Promotional language is measured and penalised, and
 only *measurable* evidence forgives it — and never entirely.
 
-**9. Second-order search.** The obvious way to express a trend is crowded and
+**9. Alerts that fire on change, not state.** "Asymmetry above 85" as a
+standing condition would re-fire every run for the same candidate until it
+stopped being true, which teaches you to ignore alerts. Every rule compares
+against the previous run and fires only on the transition:
+
+```
+critical  Halden Thermal Systems: Red-flag score jumped — rose 62 points to 62/100
+critical  Halden Thermal Systems: Candidate rejected — moved from INVESTIGATE to REJECTED
+high      Halden Thermal Systems: Risk assessment worsened — rose 2.8 to 7.8/10
+info      Halden Thermal Systems: Left the top 10 — moved from #1 to unranked
+```
+
+**10. Second-order search.** The obvious way to express a trend is crowded and
 therefore expensive. The technology graph traces a driver upstream to what it
 cannot proceed without:
 
@@ -230,7 +242,7 @@ asymmetry serve                start the API
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest      # 231 tests
+cd backend && .venv/bin/python -m pytest      # 257 tests
 ```
 
 They run on SQLite, so no database server is needed. They cover the financial

@@ -84,10 +84,24 @@ def run(
         f"Analysed: [bold]{result['analysed']}[/bold]\n"
         f"Screened out: [bold]{result['rejected']}[/bold]\n"
         f"Theses invalidated: [bold]{len(result['invalidated'])}[/bold]\n"
+        f"Alerts raised: [bold]{len(result.get('alerts', []))}[/bold]\n"
         f"Spend: [bold]${result['budget']['spent_usd']:.4f}[/bold] "
         f"({result['budget']['calls']} calls, {result['budget']['cache_hits']} cached)",
         title="Pipeline complete",
     ))
+
+    alerts = result.get("alerts", [])
+    if alerts:
+        colour = {"critical": "red", "high": "yellow", "info": "cyan"}
+        console.print("\n[bold]Alerts[/bold]")
+        for a in alerts[:12]:
+            style = colour.get(a["level"], "white")
+            console.print(
+                f"  [{style}]{a['level']:8s}[/] {a['candidate_name']}: "
+                f"{a['title']} - {a['detail']}"
+            )
+        if len(alerts) > 12:
+            console.print(f"  [dim]...and {len(alerts) - 12} more[/dim]")
 
 
 @app.command()
