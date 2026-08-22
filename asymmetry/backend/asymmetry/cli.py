@@ -351,6 +351,63 @@ def ingest_github(
         console.print(f"[green]Attached to {candidate}. Re-run `asymmetry run`.[/green]")
 
 
+@app.command()
+def learning() -> None:
+    """What the system has learned from resolved predictions (section 51).
+
+    Reports Brier score, skill against the base rate, calibration, and which
+    signals actually preceded good outcomes. Refuses to draw conclusions from
+    thin data.
+    """
+    from .pipeline.predictions import learning_report
+
+    with session_scope() as s:
+        r = learning_report(s)
+
+    console.print(Panel.fit(r["summary"], title="Feedback loop"))
+    console.print(
+        f"Resolved: [bold]{r['resolved_count']}[/bold]   "
+        f"Open: [bold]{r['open_predictions']}[/bold]"
+    )
+
+    if r["resolved_count"]:
+        skill = r.get("skill")
+        if skill is not None:
+            colour = "green" if skill > 0.02 else "red" if skill < -0.02 else "yellow"
+            console.print(
+                f"Brier [bold]{r['brier']:.3f}[/bold]  "
+                f"Skill [{colour}]{skill:+.3f}[/{colour}]  "
+                f"Base rate {r['base_rate']:.1%}  "
+                f"Overconfidence {r['overconfidence']:+.1%}"
+            )
+
+    if r["calibration"]:
+        t = Table(title="Calibration")
+        for col in ("Predicted range", "n", "Mean predicted", "Observed", "Gap"):
+            t.add_column(col, justify="right" if col != "Predicted range" else "left")
+        for b in r["calibration"]:
+            t.add_row(b["range"], str(b["count"]), f"{b['predicted']:.2f}",
+                      f"{b['observed']:.2f}", f"{b['gap']:+.2f}")
+        console.print(t)
+
+    if r["signals"]:
+        t = Table(title="Which signals actually preceded good outcomes")
+        for col in ("Signal", "n", "Success w/", "Success w/o", "Lift", "Verdict"):
+            t.add_column(col, justify="right" if col not in ("Signal", "Verdict") else "left")
+        for sig in r["signals"][:12]:
+            lift = f"{sig['lift']:.2f}x" if sig["lift"] is not None else "-"
+            t.add_row(sig["signal_type"], str(sig["with_signal"]),
+                      f"{sig['success_rate_with']:.0%}", f"{sig['success_rate_without']:.0%}",
+                      lift, sig["verdict"][:52])
+        console.print(t)
+
+    if r.get("recalibration_log"):
+        console.print(Panel.fit(
+            "\n".join(r["recalibration_log"]), title="Proposed weight changes (not applied)"
+        ))
+    console.print(f"[dim]{r['note']}[/dim]")
+
+
 @app.command("second-order")
 def second_order(
     driver: str = typer.Argument("AI compute demand", help="Trend to trace upstream from."),

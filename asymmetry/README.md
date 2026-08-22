@@ -235,6 +235,7 @@ asymmetry show NAME            full report for one candidate
 asymmetry report               daily research report
 asymmetry second-order DRIVER  trace a trend upstream to its bottlenecks
 asymmetry ingest-github O/R    pull real commit history into the signal series
+asymmetry learning             what the system has learned from resolved predictions
 asymmetry sources              sources, tiers, and what is deliberately absent
 asymmetry serve                start the API
 ```
@@ -242,7 +243,7 @@ asymmetry serve                start the API
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest      # 257 tests
+cd backend && .venv/bin/python -m pytest      # 295 tests
 ```
 
 They run on SQLite, so no database server is needed. They cover the financial
@@ -263,6 +264,38 @@ never substantiate a claim.
 Phase 1 and much of Phase 2 are built and tested. See
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for what is done and what is
 next, and [`ARCHITECTURE.md`](ARCHITECTURE.md) for how it fits together.
+
+## Does it actually work?
+
+The system grades itself, and is built to be able to fail that grade.
+
+Predictions are generated from thesis conditions — already falsifiable by
+construction — recorded with a horizon and the signals that drove them, then
+scored when the horizon arrives.
+
+```
+$ asymmetry learning
+
+Only 12 resolved prediction(s); 20 are needed before these figures mean
+anything. Reported for transparency, not for use.
+
+Brier 0.348   Skill -3.562   Base rate 91.7%   Overconfidence -52.2%
+```
+
+Three things it refuses to do:
+
+- **Draw conclusions from thin data.** Under 20 resolutions, every figure is
+  marked *not for use*.
+- **Hide behind accuracy.** It computes **skill against the base rate**. A model
+  predicting 5% for a 5% event scores a beautiful Brier of 0.048 and a skill of
+  exactly zero — and the report says so.
+- **Change its own weights quietly.** Recalibration is proposed, never applied.
+
+It has already caught a flaw in itself: the report above shows the system
+*underconfident by 52%*, because predictions inherit the analysis confidence
+score rather than a per-condition probability. Those are different quantities.
+A feedback loop discovering that its own inputs are miscalibrated on the first
+run is the mechanism doing its job.
 
 ---
 

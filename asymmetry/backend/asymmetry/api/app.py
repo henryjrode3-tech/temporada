@@ -257,6 +257,44 @@ def list_sectors(db: Session = Depends(get_db)) -> list[str]:
     return sorted(r[0] for r in rows)
 
 
+@app.get("/api/learning")
+def learning(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Feedback-loop report: skill, calibration, per-signal lift (section 51)."""
+    from ..pipeline.predictions import learning_report
+
+    return learning_report(db)
+
+
+@app.get("/api/predictions")
+def list_predictions(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    resolved: bool | None = None,
+) -> list[dict[str, Any]]:
+    query = db.query(m.Prediction, m.Candidate).join(
+        m.Candidate, m.Prediction.candidate_id == m.Candidate.id
+    )
+    if resolved is True:
+        query = query.filter(m.Prediction.resolved_at.isnot(None))
+    elif resolved is False:
+        query = query.filter(m.Prediction.resolved_at.is_(None))
+    rows = query.order_by(m.Prediction.made_at.desc()).limit(limit).all()
+    return [
+        {
+            "id": p.id, "candidate_id": c.id, "candidate_name": c.name,
+            "statement": p.statement, "metric": p.metric,
+            "predicted_value": p.predicted_value, "probability": p.probability,
+            "driving_signals": p.driving_signals or [],
+            "made_at": p.made_at.isoformat() if p.made_at else None,
+            "horizon_date": p.horizon_date.isoformat() if p.horizon_date else None,
+            "resolved_at": p.resolved_at.isoformat() if p.resolved_at else None,
+            "resolved_correct": p.resolved_correct,
+            "brier_score": p.brier_score,
+        }
+        for p, c in rows
+    ]
+
+
 @app.get("/api/movements")
 def movements(
     db: Session = Depends(get_db), limit: int = Query(20, ge=1, le=100)

@@ -39,6 +39,7 @@ from ..core.scoring import (
 )
 from ..db import models as m
 from ..llm.client import BudgetTracker, LLMClient
+from .predictions import generate_predictions, resolve_due_predictions
 
 log = logging.getLogger(__name__)
 
@@ -356,6 +357,10 @@ class Pipeline:
         ))
 
         self._persist_artifacts(cand, ctx, results)
+        self.session.flush()
+        # Record falsifiable predictions so the feedback loop has something to
+        # grade later. Without this the system can never learn anything.
+        generate_predictions(self.session, cand, as_of=self.as_of)
         return {
             "candidate_id": cand.id, "verdict": verdict.value,
             "overall_score": composite.overall_score, "asymmetry_score": asymmetry,
@@ -670,6 +675,7 @@ class Pipeline:
                     ))
 
             invalidated = self.check_theses()
+            resolution = resolve_due_predictions(self.session, as_of=self.as_of)
             movements = self.rerank()
 
             alerts = []
@@ -694,6 +700,7 @@ class Pipeline:
                 "screened_out": len(screen.rejected),
                 "passed_screen": len(screen.passed),
                 "theses_invalidated": len(invalidated),
+                "predictions": resolution,
                 "budget": self.llm.budget.summary(),
                 "llm_mode": self.settings.llm_mode,
                 "alerts": [a.to_dict() for a in alerts[:50]],
@@ -703,6 +710,7 @@ class Pipeline:
                 "rejected": len(screen.rejected), "invalidated": invalidated,
                 "movements": movements[:20], "budget": self.llm.budget.summary(),
                 "alerts": [a.to_dict() for a in alerts],
+                "predictions": resolution,
             }
         except Exception as exc:
             run.status = "error"

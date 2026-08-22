@@ -22,7 +22,7 @@ are noted below.
 | FastAPI + rate limiting + API-key guard | ✅ | `api/app.py` |
 | Next.js dashboard | ✅ | `frontend/` |
 | CLI | ✅ | `cli.py` |
-| Test suite (257 tests) | ✅ | `tests/` |
+| Test suite (295 tests) | ✅ | `tests/` |
 
 **Deviation 1 — the scenario engine was pulled forward from Phase 4.** It is
 pure arithmetic with no dependencies, it is what makes every other number
@@ -90,25 +90,43 @@ harness would only demonstrate that the code runs, not that the method works.
 
 ---
 
-## Phase 5 — Learning ⬜ not started
+## Phase 5 — Learning 🟡 machinery built, awaiting data
 
-| Item | Status |
-| --- | --- |
-| `predictions` table | ✅ schema exists |
-| Resolution + Brier scoring | ⬜ |
-| Per-signal predictive accuracy | ⬜ |
-| Replace hand-tuned weights with measured ones | ⬜ |
-| Ranking / anomaly ML | ⬜ |
+| Item | Status | Notes |
+| --- | --- | --- |
+| `predictions` table | ✅ | |
+| Prediction generation from thesis conditions | ✅ | `pipeline/predictions.py` |
+| Resolution + Brier scoring | ✅ | Unmeasurable outcomes left unresolved, never guessed |
+| **Skill score against the base rate** | ✅ | The number a self-flattering system would omit |
+| Calibration buckets + overconfidence | ✅ | |
+| Per-signal predictive lift | ✅ | `core/learning.py` |
+| Weight recalibration from measured lift | ✅ | Proposed, never auto-applied |
+| `asymmetry learning` + `/api/learning` | ✅ | |
+| Ranking / anomaly ML | ⬜ | Premature until there is real outcome data |
 
-This is section 51 — the part that makes the system get *better* rather than
-merely sound confident — and it is the one phase that cannot be rushed. It needs
-resolved predictions, which need elapsed time. The schema records every
-prediction with a horizon and the signals that drove it, so the data will exist
-when the time does.
+Section 51 — the part that makes the system get *better* rather than merely
+sound confident. The machinery is built and tested; what it lacks is elapsed
+time. Predictions are generated from thesis conditions (already falsifiable by
+construction), resolved when their horizon arrives, and graded.
 
-Until then, the weights in `core/scoring.py` and the probabilities in
-`core/scenarios.py` are explicitly **priors chosen by hand**, not measurements,
-and are labelled as such in the code.
+**Three deliberate refusals**, because a learning layer that cannot report
+failure is decoration:
+
+1. Under 20 resolved predictions it reports figures but marks them *"not for
+   use"*.
+2. It computes **skill against the base rate**, so a model that looks accurate
+   only because the event is rare is exposed as worthless.
+3. Weight recalibration is **proposed, never applied automatically** —
+   silently changing the scoring model would make historical scores
+   incomparable without anyone noticing.
+
+**What it has already found.** On the seeded data the loop reports the system
+as *underconfident by 52%*: predictions are made at the candidate's confidence
+score (~40%) while the generated thesis conditions hold ~92% of the time. That
+is a genuine mismatch — confidence means "how much do we trust this analysis",
+not "how likely is this condition to hold" — and the loop surfacing it on its
+first run is the mechanism working. The fix should be driven by calibration
+data rather than by another guess.
 
 ---
 
