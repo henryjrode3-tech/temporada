@@ -157,6 +157,17 @@ export async function getSignalFeed(
 ): Promise<Result<AttributedSignal[]>> {
   const res = await getSignals(limit);
   const attributed = res.data.map((signal) => {
+    // The live feed carries its own attribution, so use it directly. The
+    // description lookup is only a fallback for fixtures, which have no
+    // candidate fields on the signal itself.
+    if (signal.candidate_id && signal.candidate_name) {
+      return {
+        signal,
+        candidate_id: signal.candidate_id,
+        candidate_name: signal.candidate_name,
+        ticker: MOCK_SIGNAL_ATTRIBUTION[signal.description]?.ticker ?? null,
+      };
+    }
     const hit = MOCK_SIGNAL_ATTRIBUTION[signal.description];
     return {
       signal,

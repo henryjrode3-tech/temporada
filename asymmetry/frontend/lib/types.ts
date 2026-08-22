@@ -68,6 +68,14 @@ export interface Signal {
   detected_at: string;
   description: string;
   is_significant: boolean;
+  /**
+   * Present on the /api/signals feed, absent when a Signal is nested inside a
+   * CandidateDetail (where the owning candidate is already known). Optional
+   * rather than required so both shapes satisfy the same type.
+   */
+  candidate_id?: string;
+  candidate_name?: string;
+  sector?: string | null;
 }
 
 export interface RedFlag {

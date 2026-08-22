@@ -70,10 +70,12 @@ export function asymmetryFromScenarios(scenarios: ScenarioResult[]): {
     if (m > 1) gain += s.probability * (m - 1);
     else if (m < 1) loss += s.probability * (1 - m);
   }
-  const ratio = loss > 0 ? gain / loss : gain > 0 ? 60 : 0;
+  const ratio = loss > 0 ? gain / loss : gain > 0 ? 200 : 0;
+  // A payoff ratio of 200:1 is treated as the practical ceiling; anything
+  // beyond it is indistinguishable from modelling noise.
   const score = Math.max(
     0,
-    Math.min(100, Math.round((100 * Math.log10(1 + ratio)) / Math.log10(51))),
+    Math.min(100, Math.round((100 * Math.log10(1 + ratio)) / Math.log10(201))),
   );
   return { payoffRatio: round(ratio), score };
 }

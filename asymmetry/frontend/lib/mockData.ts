@@ -100,26 +100,27 @@ function buildThesis(spec: CandidateSpec): Thesis {
   };
 }
 
-/** Ten monthly snapshots ending in the current month. */
+/**
+ * Ten monthly snapshots ending in the current month. The trail is shifted so
+ * its last point equals the composite score actually computed today, and the
+ * asymmetry trail moves with — but not in lockstep with — the overall score.
+ */
 function buildScoreHistory(
   spec: CandidateSpec,
+  finalOverall: number,
   finalAsymmetry: number,
 ): ScorePoint[] {
-  const n = spec.score_history.length;
-  const first = spec.score_history[0];
-  const last = spec.score_history[n - 1];
-  const span = last - first || 1;
-  return spec.score_history.map((overall, i) => {
+  const raw = spec.score_history;
+  const offset = finalOverall - raw[raw.length - 1];
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+  return raw.map((value, i) => {
     const d = new Date(Date.UTC(2025, 10 + i, 1));
-    const progress = (overall - first) / span;
-    const asym = Math.max(
-      0,
-      Math.min(100, Math.round(finalAsymmetry - (1 - progress) * 12)),
-    );
+    const overall = clamp(Math.round((value + offset) * 10) / 10);
+    const drift = (value - raw[raw.length - 1]) * 0.8;
     return {
       at: d.toISOString().slice(0, 10),
       overall_score: overall,
-      asymmetry_score: asym,
+      asymmetry_score: clamp(Math.round(finalAsymmetry + drift)),
     };
   });
 }
@@ -143,7 +144,11 @@ function build(spec: CandidateSpec): Built {
   const dimensions = buildDimensions(spec);
   const composite = buildComposite(dimensions, redFlagReport);
   const signals = buildSignals(spec);
-  const scoreHistory = buildScoreHistory(spec, scenarios.asymmetry_score);
+  const scoreHistory = buildScoreHistory(
+    spec,
+    composite.overall_score,
+    scenarios.asymmetry_score,
+  );
 
   const candidate: Candidate = {
     id: spec.id,

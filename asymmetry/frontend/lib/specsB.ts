@@ -424,10 +424,10 @@ export const SPECS_B: CandidateSpec[] = [
     ],
     dimensions: [
       ["future_market", 81, "Firm low-carbon power demand is structural, though the delivery mechanism remains contested.", 0.73],
-      ["technology", 66, "Forging metallurgy under nuclear QA is hard-won process knowledge rather than novel technology.", 0.8],
+      ["technology", 70, "Forging metallurgy under nuclear QA is hard-won process knowledge rather than novel technology.", 0.8],
       ["competitive_advantage", 87, "N-stamp certification plus press capacity; requalifying a new works runs five to seven years.", 0.85],
       ["early_signals", 72, "Three capacity reservation agreements signed in twelve months, a commercial form that did not previously exist here.", 0.76],
-      ["valuation", 78, "4x sales for a certified sole-source position with an existing profitable base.", 0.81],
+      ["valuation", 82, "4x sales for a certified sole-source position with an existing profitable base.", 0.81],
       ["growth", 69, "34% growth driven by life-extension volume, not yet by new build.", 0.83],
       ["financial_health", 66, "Net debt $26M; the press expansion is partly customer-funded through reservation fees.", 0.88],
       ["management", 74, "Long-tenured, refused two low-margin fixed-price contracts that competitors took and lost money on.", 0.69],

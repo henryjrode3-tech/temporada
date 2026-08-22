@@ -2,7 +2,6 @@ import { getStats, getTopOpportunities } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { OpportunityCard } from "@/components/OpportunityCard";
 import { VerdictChip, VERDICT_DOT } from "@/components/VerdictChip";
-import { EstimateLegend } from "@/components/Estimate";
 import { Callout, Empty, PageHeader, SourceTag } from "@/components/ui";
 import { formatDateTime, VERDICT_ORDER } from "@/lib/format";
 import type { Verdict } from "@/lib/types";
@@ -66,7 +65,9 @@ export default async function HomePage() {
           <h2 className="text-[12px] font-semibold uppercase tracking-wider text-neutral-400">
             Verdict distribution
           </h2>
-          <EstimateLegend />
+          <span className="text-[11px] text-neutral-600">
+            research posture, not an instruction
+          </span>
         </div>
         <div className="flex h-2 w-full overflow-hidden rounded-full bg-neutral-800">
           {VERDICT_ORDER.filter((v) => s.by_verdict[v]).map((v) => (
