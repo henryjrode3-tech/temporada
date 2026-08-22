@@ -278,6 +278,65 @@ class TestPipeline:
         for c in seeded.query(m.Candidate).filter(m.Candidate.verdict == "REJECTED"):
             assert c.rank is None
 
+    def test_rank_is_cleared_when_a_candidate_becomes_rejected(self, seeded):
+        """A stale rank on a rejected candidate misreports it as still ranked."""
+        p = Pipeline(seeded)
+        p.run_daily(limit=8)
+        target = (
+            seeded.query(m.Candidate)
+            .filter(m.Candidate.rank.isnot(None))
+            .order_by(m.Candidate.rank.asc()).first()
+        )
+        assert target is not None and target.rank == 1
+
+        fin = (
+            seeded.query(m.FinancialMetric)
+            .filter(m.FinancialMetric.candidate_id == target.id).one()
+        )
+        fin.free_cash_flow, fin.cash = -190e6, 15e6
+        fin.gross_margin, fin.shares_outstanding = 0.04, 44e6
+        seeded.commit()
+
+        p.run_daily(limit=8)
+        seeded.refresh(target)
+        assert target.verdict == "REJECTED"
+        assert target.rank is None
+
+    def test_dropping_out_of_the_ranking_is_explained(self, seeded):
+        """The most important movement to explain is the one that vanishes."""
+        p = Pipeline(seeded)
+        p.run_daily(limit=8)
+        target = (
+            seeded.query(m.Candidate)
+            .filter(m.Candidate.rank.isnot(None))
+            .order_by(m.Candidate.rank.asc()).first()
+        )
+        fin = (
+            seeded.query(m.FinancialMetric)
+            .filter(m.FinancialMetric.candidate_id == target.id).one()
+        )
+        fin.free_cash_flow, fin.cash = -190e6, 15e6
+        fin.gross_margin, fin.shares_outstanding = 0.04, 44e6
+        seeded.commit()
+
+        p.run_daily(limit=8)
+        latest = (
+            seeded.query(m.Score).filter(m.Score.candidate_id == target.id)
+            .order_by(m.Score.created_at.desc()).first()
+        )
+        assert latest.change_reason
+        assert "Dropped out of the ranking" in latest.change_reason
+        assert "financial health deteriorated" in latest.change_reason
+
+    def test_score_history_records_rank(self, seeded):
+        Pipeline(seeded).run_daily(limit=5)
+        ranked = seeded.query(m.Candidate).filter(m.Candidate.rank.isnot(None)).first()
+        latest = (
+            seeded.query(m.Score).filter(m.Score.candidate_id == ranked.id)
+            .order_by(m.Score.created_at.desc()).first()
+        )
+        assert latest.rank == ranked.rank
+
     def test_historical_mode_suppresses_future_signals(self, seeded):
         """The whole backtest depends on this."""
         old = date.today() - timedelta(days=900)

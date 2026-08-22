@@ -22,7 +22,7 @@ are noted below.
 | FastAPI + rate limiting + API-key guard | ✅ | `api/app.py` |
 | Next.js dashboard | ✅ | `frontend/` |
 | CLI | ✅ | `cli.py` |
-| Test suite (203 tests) | ✅ | `tests/` |
+| Test suite (217 tests) | ✅ | `tests/` |
 
 **Deviation 1 — the scenario engine was pulled forward from Phase 4.** It is
 pure arithmetic with no dependencies, it is what makes every other number
@@ -63,7 +63,7 @@ mode, so the backtest would silently run on a fraction of the data.
 | Acceleration detection, magnitude + significance | ✅ | `core/signals.py` |
 | Historical score tracking | ✅ | Append-only |
 | Thesis tracker with monitored conditions | ✅ | Conditions individually falsifiable |
-| Rank movement + explanation | 🟡 | Movement recorded; the *narrative* explanation is not generated |
+| Rank movement + explanation | ✅ | `core/movement.py` - attributes change to the dimensions that moved, using the weights in force at the time |
 | Alerts (§35) | ⬜ | Thresholds defined; no delivery mechanism |
 | Live source ingestion into signal series | ⬜ | Series are synthetic; wiring GitHub/USASpending/PatentsView is the next real task |
 
@@ -135,6 +135,5 @@ and are labelled as such in the code.
 
 1. **Wire one live signal source end to end** — GitHub repository activity into
    the signal series — so acceleration detection runs on real data.
-2. **Rank-movement explanations**: diff consecutive score snapshots and state
-   which dimension moved and why.
-3. **Alert delivery** on the thresholds already defined in section 35.
+2. **Alert delivery** on the thresholds already defined in section 35.
+3. **Recursive query expansion** so discovery walks into domains nobody listed.

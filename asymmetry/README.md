@@ -199,8 +199,16 @@ worth running.
 
 `scores`, `financial_metrics` and `market_estimates` are append-only. Each score
 snapshot stores its own components *and weights*, so an old score stays
-interpretable after the model is recalibrated. "Why did this fall from #2 to
-#17" is a query.
+interpretable after the model is recalibrated — and "why did this fall from #2
+to #17" is answered, not merely recorded:
+
+> Dropped out of the ranking (was #1); now REJECTED. Score fell 43.2 points.
+> Driven by financial health deteriorated 8.0 to 0.0 (−8.0 points) and
+> technology deteriorated 5.0 to 3.0 (−3.0 points). New red flags: Collapsing
+> gross margin, Severe dilution, Under 12 months of cash.
+
+Attribution uses the weights that were in force at the time, because a
+recalibration is a change in the model, not in the candidate.
 
 ---
 
@@ -221,7 +229,7 @@ asymmetry serve                start the API
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest      # 203 tests
+cd backend && .venv/bin/python -m pytest      # 217 tests
 ```
 
 They run on SQLite, so no database server is needed. They cover the financial

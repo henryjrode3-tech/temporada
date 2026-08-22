@@ -257,6 +257,37 @@ def list_sectors(db: Session = Depends(get_db)) -> list[str]:
     return sorted(r[0] for r in rows)
 
 
+@app.get("/api/movements")
+def movements(
+    db: Session = Depends(get_db), limit: int = Query(20, ge=1, le=100)
+) -> list[dict[str, Any]]:
+    """Recent standing changes, with the reason each one happened (section 13)."""
+    rows = (
+        db.query(m.Score, m.Candidate)
+        .join(m.Candidate, m.Score.candidate_id == m.Candidate.id)
+        .filter(m.Score.change_reason.isnot(None))
+        .order_by(m.Score.created_at.desc())
+        .limit(limit).all()
+    )
+    return [
+        {
+            "candidate_id": c.id, "candidate_name": c.name, "sector": c.sector,
+            "rank": c.rank, "previous_rank": c.previous_rank,
+            "rank_change": (
+                (c.previous_rank - c.rank)
+                if c.rank is not None and c.previous_rank is not None else None
+            ),
+            "dropped_out": c.previous_rank is not None and c.rank is None,
+            "verdict": c.verdict,
+            "overall_score": s.overall_score,
+            "asymmetry_score": s.asymmetry_score,
+            "scored_at": s.scored_at.isoformat() if s.scored_at else None,
+            "reason": s.change_reason,
+        }
+        for s, c in rows
+    ]
+
+
 @app.get("/api/techgraph")
 def tech_graph() -> dict[str, Any]:
     """The technology dependency graph (section 37)."""

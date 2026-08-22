@@ -30,6 +30,7 @@ from ..agents import (
 )
 from ..config import get_settings
 from ..core.hype import analyse_hype
+from ..core.movement import explain_movement
 from ..core.redflags import FinancialSnapshot, detect_red_flags
 from ..core.scoring import (
     Dimension,
@@ -461,12 +462,70 @@ class Pipeline:
                       m.Candidate.overall_score.desc().nullslast())
             .all()
         )
-        movements = []
-        for i, cand in enumerate(ranked, start=1):
+        new_ranks = {cand.id: i for i, cand in enumerate(ranked, start=1)}
+
+        movements: list[tuple[str, int | None, int | None]] = []
+        # Every scored candidate is visited, not just the ranked ones. A
+        # candidate that drops out of the ranking entirely is the single most
+        # important movement to explain, and skipping it would leave the reader
+        # with a stale rank and no account of where it went.
+        for cand in self.session.query(m.Candidate).filter(
+            m.Candidate.overall_score.isnot(None)
+        ):
             cand.previous_rank = cand.rank
-            cand.rank = i
-            movements.append((cand.id, i, cand.previous_rank))
+            cand.rank = new_ranks.get(cand.id)   # None once no longer eligible
+            if cand.previous_rank != cand.rank:
+                movements.append((cand.id, cand.rank, cand.previous_rank))
+            self._explain_change(cand)
+
+        movements.sort(key=lambda mv: (mv[1] is None, mv[1] or 0))
         return movements
+
+    def _explain_change(self, cand: m.Candidate) -> None:
+        """Attribute a candidate's movement to whatever actually changed.
+
+        Written onto the newest score snapshot so the history explains itself
+        without needing to recompute anything later.
+        """
+        history = (
+            self.session.query(m.Score)
+            .filter(m.Score.candidate_id == cand.id)
+            .order_by(m.Score.scored_at.desc(), m.Score.created_at.desc())
+            .limit(2).all()
+        )
+        if not history:
+            return
+
+        latest = history[0]
+        latest.rank = cand.rank
+        if len(history) < 2:
+            return
+
+        previous = history[1]
+
+        def snapshot(row: m.Score, rank: int | None) -> dict[str, Any]:
+            return {
+                "overall_score": row.overall_score,
+                "components": row.components,
+                "weights": row.weights,
+                "penalty": row.penalty,
+                "penalty_reasons": row.penalty_reasons,
+                "rank": rank,
+                "asymmetry_score": row.asymmetry_score,
+                "verdict": row.verdict,
+            }
+
+        explanation = explain_movement(
+            snapshot(previous, cand.previous_rank),
+            snapshot(latest, cand.rank),
+        )
+        summary = explanation.summary
+        if cand.previous_rank is not None and cand.rank is None:
+            summary = (
+                f"Dropped out of the ranking (was #{cand.previous_rank}); "
+                f"now {cand.verdict}. " + summary
+            )
+        latest.change_reason = summary
 
     def check_theses(self) -> list[dict[str, Any]]:
         """Evaluate every monitored condition against current metrics.

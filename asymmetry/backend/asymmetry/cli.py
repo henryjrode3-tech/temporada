@@ -211,6 +211,14 @@ def show(name: str) -> None:
                 title=f"Thesis ({th['status']})",
             ))
 
+        history = d.get("score_history") or []
+        explained = [h for h in history if h.get("change_reason")]
+        if explained:
+            console.print(Panel.fit(
+                "\n".join(f"  {h['at']}  {h['change_reason']}" for h in explained[-4:]),
+                title="Why the standing changed",
+            ))
+
         console.print("[dim]Research output. Model estimates under stated assumptions. "
                       "Not investment advice.[/dim]")
 

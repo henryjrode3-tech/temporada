@@ -431,3 +431,111 @@ class TestRedFlags:
             auditor_changes_24m=4, related_party_transactions=True,
         )
         assert detect_red_flags(fin).penalty_points <= 30.0
+
+
+# ==========================================================================
+class TestMovementExplanation:
+    """Section 13: explain why a candidate moved."""
+
+    BEFORE = {
+        "overall_score": 72.0, "rank": 2, "asymmetry_score": 80.0, "verdict": "INVESTIGATE",
+        "penalty": 0.0, "penalty_reasons": [],
+        "components": {"technology": 8.0, "market": 7.0, "financial_health": 7.0,
+                       "valuation": 8.0, "early_signals": 6.0},
+        "weights": {"technology": 0.15, "market": 0.15, "financial_health": 0.10,
+                    "valuation": 0.15, "early_signals": 0.15},
+    }
+
+    def _after(self, **overrides):
+        from copy import deepcopy
+        d = deepcopy(self.BEFORE)
+        d.update(overrides)
+        return d
+
+    def test_identifies_the_dimension_that_moved(self):
+        from asymmetry.core.movement import explain_movement
+
+        after = self._after(
+            overall_score=58.0, rank=17,
+            components={**self.BEFORE["components"], "financial_health": 2.0},
+        )
+        exp = explain_movement(self.BEFORE, after)
+        assert exp.changes
+        assert exp.changes[0].dimension == "financial_health"
+        assert exp.changes[0].delta == -5.0
+        assert "financial health deteriorated" in exp.summary
+
+    def test_rank_delta_direction(self):
+        from asymmetry.core.movement import explain_movement
+
+        assert explain_movement(self.BEFORE, self._after(rank=17)).rank_delta == -15
+        assert explain_movement(self.BEFORE, self._after(rank=1)).rank_delta == 1
+
+    def test_ignores_noise_below_threshold(self):
+        from asymmetry.core.movement import explain_movement
+
+        after = self._after(components={**self.BEFORE["components"], "technology": 8.2})
+        assert explain_movement(self.BEFORE, after).changes == []
+
+    def test_ranks_by_weighted_impact_not_raw_delta(self):
+        """A small move in a heavy dimension can outrank a large move in a light one."""
+        from asymmetry.core.movement import explain_movement
+
+        after = self._after(components={
+            **self.BEFORE["components"],
+            "valuation": 5.0,          # -3.0 at weight 0.15 = -4.5 points
+            "financial_health": 3.0,   # -4.0 at weight 0.10 = -4.0 points
+        })
+        exp = explain_movement(self.BEFORE, after)
+        assert exp.changes[0].dimension == "valuation"
+
+    def test_new_red_flags_reported(self):
+        from asymmetry.core.movement import explain_movement
+
+        after = self._after(penalty=12.0, penalty_reasons=["Heavy dilution"])
+        exp = explain_movement(self.BEFORE, after)
+        assert exp.new_penalties == ["Heavy dilution"]
+        assert "New red flags" in exp.summary
+
+    def test_resolved_flags_reported(self):
+        from asymmetry.core.movement import explain_movement
+
+        before = {**self.BEFORE, "penalty_reasons": ["Short runway"], "penalty": 12.0}
+        exp = explain_movement(before, self._after())
+        assert exp.resolved_penalties == ["Short runway"]
+
+    def test_movement_with_no_internal_change_is_attributed_to_others(self):
+        """Falling because others rose is a different fact from falling on merit."""
+        from asymmetry.core.movement import explain_movement
+
+        exp = explain_movement(self.BEFORE, self._after(rank=9))
+        assert "other candidates" in exp.summary
+
+    def test_verdict_change_noted(self):
+        from asymmetry.core.movement import explain_movement
+
+        exp = explain_movement(self.BEFORE, self._after(verdict="REJECTED"))
+        assert "INVESTIGATE to REJECTED" in exp.summary
+
+    def test_attribution_uses_the_earlier_weights(self):
+        """A recalibration is a change in the model, not in the candidate."""
+        from asymmetry.core.movement import explain_movement
+
+        after = self._after(
+            components={**self.BEFORE["components"], "technology": 4.0},
+            weights={**self.BEFORE["weights"], "technology": 0.99},
+        )
+        exp = explain_movement(self.BEFORE, after)
+        tech = [c for c in exp.changes if c.dimension == "technology"][0]
+        assert tech.weight == 0.15
+
+    def test_no_change_is_stated_plainly(self):
+        from asymmetry.core.movement import explain_movement
+
+        assert explain_movement(self.BEFORE, self._after()).summary == "No material change."
+
+    def test_serialises(self):
+        from asymmetry.core.movement import explain_movement
+
+        d = explain_movement(self.BEFORE, self._after(rank=17)).to_dict()
+        assert "summary" in d and "changes" in d and d["rank_delta"] == -15
