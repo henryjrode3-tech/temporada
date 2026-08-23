@@ -67,6 +67,65 @@ confused with model reasoning.
 
 ---
 
+## Researching a real company
+
+```bash
+export ASYMMETRY_USER_AGENT="YourTool/1.0 (you@example.com)"   # the SEC requires this
+.venv/bin/python -m asymmetry.cli research IONQ --price 45
+```
+
+Pulls real fundamentals from SEC XBRL filings and grades every number:
+
+```
+Grade        Item                        Value      Source
+FACT         Revenue (latest annual)     $130.02M   SEC EDGAR 10-K · FY2025 · filed 2026-02-25
+DERIVED      Revenue growth (YoY)        201.9%     SEC EDGAR 10-K · FY2024 · filed 2025-02-26
+FACT         Stock-based compensation    $312.03M   SEC EDGAR 10-K · FY2025 · filed 2026-02-25
+DERIVED      Annual dilution             25.1%      SEC EDGAR
+ASSUMPTION   Addressable market          $10.40B    No independent market study was performed
+
+critical  Severe dilution — share count grew 63% year over year
+high      Extreme stock-based compensation — SBC is 240% of revenue
+
+Today's price requires 127% of the entire estimated market — more than the
+market contains.
+
+Verdict: NOT_ASYMMETRIC — asymmetry 4/100
+```
+
+**Five grades, and a claim can never outrank its weakest input.** A scenario
+built on an assumed market size is an ASSUMPTION however much audited revenue
+also went into it — enforced in code, because remembering to downgrade by hand
+fails silently and in the flattering direction.
+
+| Grade | Meaning |
+| --- | --- |
+| FACT | In a regulatory filing. Cited to the exact accession number. |
+| DERIVED | Arithmetic on facts. |
+| ESTIMATE | Approximated from partial data. |
+| ASSUMPTION | Chosen by the model. Not evidence. |
+| AI INTERPRETATION | A language model's reading. Unverified. |
+
+### Point-in-time, properly
+
+Every SEC datapoint carries both the period it covers *and the date it was
+filed*. The as-of filter reads **filed**, so a 2015 query sees FY2014 as
+originally reported — not as restated in 2017.
+
+```bash
+.venv/bin/python -m asymmetry.cli research AAPL --as-of 2021-01-01
+```
+
+### What has no free source
+
+**Share price.** The SEC does not publish it, and market cap is the denominator
+of every multiple here. So there is no default price provider — without one the
+report omits valuation entirely and says why, rather than inventing a number
+and computing a confident-looking asymmetry score on top of it. Supply one with
+`--price`, or configure Tiingo/Polygon.
+
+---
+
 ## What it actually does
 
 For each candidate it asks one question — *if this became extremely successful,
@@ -243,7 +302,7 @@ asymmetry serve                start the API
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest      # 295 tests
+cd backend && .venv/bin/python -m pytest      # 379 tests
 ```
 
 They run on SQLite, so no database server is needed. They cover the financial

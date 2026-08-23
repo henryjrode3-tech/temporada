@@ -15,6 +15,10 @@ are noted below.
 | Candidate model (section 17) | ✅ | `db/models.py::Candidate` |
 | Source interface, tiers, rate limits | ✅ | `sources/base.py` |
 | Live sources: SEC, arXiv, GitHub, HN | ✅ | `sources/public.py` |
+| **Real company fundamentals (SEC XBRL)** | ✅ | `sources/edgar.py` - point-in-time on `filed`, not `end` |
+| **Evidence grading** | ✅ | `core/evidence.py` - FACT / DERIVED / ESTIMATE / ASSUMPTION / AI |
+| **`asymmetry research TICKER`** | ✅ | `research/company.py` - real ticker in, sourced report out |
+| **Price provider interface** | ⚠️ | `sources/prices.py` - requires credentials; never invents a price |
 | Synthetic corpus + mocks | ✅ | `sources/mock.py` |
 | Discovery agent | ✅ | `agents/discovery.py` |
 | Financial analysis | ✅ | `agents/analysis.py` |
@@ -22,7 +26,7 @@ are noted below.
 | FastAPI + rate limiting + API-key guard | ✅ | `api/app.py` |
 | Next.js dashboard | ✅ | `frontend/` |
 | CLI | ✅ | `cli.py` |
-| Test suite (295 tests) | ✅ | `tests/` |
+| Test suite (379 tests) | ✅ | `tests/` |
 
 **Deviation 1 — the scenario engine was pulled forward from Phase 4.** It is
 pure arithmetic with no dependencies, it is what makes every other number
@@ -81,12 +85,16 @@ mode, so the backtest would silently run on a fraction of the data.
 | **Historical snapshot harness** | ⬜ | Needs point-in-time *market* data, which is the hard part |
 | Hindsight benchmark (§31) | ⬜ | Depends on the above |
 
-**The honest blocker.** Running "what would this have found in 2012" requires
-point-in-time fundamentals and prices — what was *known* in 2012, not what has
-since been restated. Free sources do not provide this; it needs a paid
-point-in-time dataset. The plumbing is ready, the data is not, and pretending
-otherwise would produce a backtest that flatters itself. Until then the
-harness would only demonstrate that the code runs, not that the method works.
+**Half the blocker is now removed.** Point-in-time *fundamentals* are solved:
+SEC XBRL stamps every datapoint with the date it was filed, so a query as of
+2015 sees the figures as originally reported, not as later restated. That was
+the harder half and it is free.
+
+What remains is point-in-time **prices**. The SEC does not publish them, and
+market capitalisation is the denominator of every multiple the platform
+computes — a wrong price does not degrade the output, it inverts it. So the
+price layer is an interface with no default implementation: without
+credentials there is simply no valuation, and the report says so.
 
 ---
 
@@ -132,6 +140,12 @@ data rather than by another guess.
 
 ## Known limitations
 
+0. **Market size is the weakest link in every real-company report.** With no
+   independent market study, TAM is approximated as a multiple of current
+   revenue — a crude sector heuristic. It is graded ASSUMPTION, and because a
+   claim can never outrank its weakest input, every scenario built on it is
+   graded ASSUMPTION too. Supply `--tam` with a real figure and the report
+   improves accordingly.
 1. **Scenario probabilities are guesses.** 40/35/20/5 is a reasonable prior for
    speculative small companies, not a measured distribution. Expected values
    inherit that uncertainty entirely.
@@ -153,8 +167,9 @@ data rather than by another guess.
 
 ## Next three tasks, in order
 
-1. **Wire USASpending and PatentsView** — both are free APIs with real history,
-   unlike GitHub's rolling window, so they would also serve the backtest.
+1. **Historical price data** — the last piece blocking real backtesting.
+   Tiingo/Polygon free tiers include end-of-day history; the interface is
+   written and the implementation is a single file.
 2. **Alert delivery** — the rules exist and fire correctly; routing them to
    email or a webhook does not.
 3. **Recursive query expansion** so discovery walks into domains nobody listed.

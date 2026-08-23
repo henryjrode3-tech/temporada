@@ -352,6 +352,148 @@ def ingest_github(
 
 
 @app.command()
+def research(
+    ticker: str = typer.Argument(..., help="US-listed ticker, e.g. AAPL."),
+    price: float = typer.Option(0.0, help="Share price, to enable valuation."),
+    tam: float = typer.Option(0.0, help="Addressable market in USD, if you have a real estimate."),
+    as_of: str = typer.Option("", help="Point-in-time: use only data filed on or before YYYY-MM-DD."),
+    years: float = typer.Option(10.0, help="Scenario horizon."),
+    json_out: bool = typer.Option(False, "--json", help="Emit the full report as JSON."),
+) -> None:
+    """Research a real public company from SEC filings.
+
+    Every figure is graded FACT, DERIVED, ESTIMATE, ASSUMPTION or AI
+    INTERPRETATION, and facts cite the filing they came from.
+    """
+    import json as _json
+    from .research.company import research_ticker
+    from .sources.edgar import EdgarError, TickerNotFound
+
+    cutoff = date.fromisoformat(as_of) if as_of else None
+    try:
+        report = research_ticker(
+            ticker, as_of=cutoff, price=price or None, tam=tam or None,
+            horizon_years=years,
+        )
+    except TickerNotFound as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    except EdgarError as exc:
+        console.print(f"[red]SEC EDGAR error: {exc}[/red]")
+        raise typer.Exit(1)
+
+    if json_out:
+        console.print_json(_json.dumps(report.to_dict(), default=str))
+        return
+
+    _render_research(report)
+
+
+GRADE_STYLE = {
+    "FACT": "green", "DERIVED": "cyan", "ESTIMATE": "yellow",
+    "ASSUMPTION": "magenta", "AI INTERPRETATION": "red",
+}
+
+
+def _render_research(report) -> None:
+    """Print a research report, keeping grades visible throughout."""
+    console.print(Panel.fit(
+        f"[bold]{report.company_name}[/bold] ({report.ticker})\n"
+        f"{report.industry or 'industry unknown'}  ·  CIK {report.cik}\n"
+        f"Data as of {report.as_of.isoformat()}  ·  generated {report.generated_at.isoformat()}\n\n"
+        f"Verdict: [bold]{report.verdict}[/bold]\n{report.verdict_reason}",
+        title="Research result",
+    ))
+
+    ledger = report.ledger
+    t = Table(title="Evidence")
+    t.add_column("Grade"); t.add_column("Item"); t.add_column("Value", justify="right")
+    t.add_column("Source / basis")
+    for c in ledger.claims:
+        style = GRADE_STYLE.get(c.grade.label, "white")
+        src = (c.citations[0].render(compact=True) if c.citations
+               else c.rationale[:70])
+        t.add_row(f"[{style}]{c.grade.label}[/]", c.label, c.render_value(), src[:70])
+    console.print(t)
+    console.print(
+        f"[dim]{ledger.evidence_ratio:.0%} of claims are facts or derived from facts. "
+        f"{ledger.counts()}[/dim]"
+    )
+    for w in ledger.integrity_warnings():
+        console.print(f"[yellow]! {w}[/yellow]")
+
+    hist = report.financial_history.get("revenue")
+    if hist:
+        t = Table(title="Revenue history (as first reported)")
+        t.add_column("FY"); t.add_column("Revenue", justify="right")
+        t.add_column("Filed"); t.add_column("Form")
+        for row in hist[-8:]:
+            t.add_row(str(row["fiscal_year"]), _money(row["value"]), row["filed"], row["form"])
+        console.print(t)
+
+    sc = report.scenarios
+    if sc:
+        t = Table(title=f"Scenarios ({sc['years']:.0f}-year horizon)")
+        for col in ("Scenario", "P", "Revenue", "Future cap", "Per-share", "CAGR", ""):
+            t.add_column(col, justify="right" if col != "Scenario" else "left")
+        for row in sc["scenarios"]:
+            t.add_row(
+                row["name"].replace("_", " ").title(), f"{row['probability']:.0%}",
+                _money(row["revenue"]), _money(row["future_market_cap"]),
+                f"{row['per_share_multiple']:.2f}x", f"{row['per_share_cagr']*100:.1f}%",
+                "[yellow]clamped[/yellow]" if row["was_clamped"] else "",
+            )
+        console.print(t)
+        console.print(
+            f"Median [bold]{sc['median_multiple']:.2f}x[/bold] | "
+            f"Expected {sc['expected_multiple']:.2f}x | "
+            f"P(permanent loss) {sc['probability_of_loss']:.0%} | "
+            f"Asymmetry {sc['asymmetry_score']:.0f}/100"
+        )
+        if sc.get("is_tail_dominated"):
+            console.print(
+                f"[yellow]{sc['tail_contribution']:.0%} of the expected value comes from "
+                f"the single least likely branch. Read the median.[/yellow]"
+            )
+        console.print(f"[magenta]{sc['probability_note']}[/magenta]")
+
+    if report.reverse_valuation:
+        console.print(Panel.fit(
+            report.reverse_valuation["verdict"] + "\n\n[dim]" +
+            report.reverse_valuation["note"] + "[/dim]",
+            title="What today's price already assumes",
+        ))
+
+    if report.red_flags.get("flags"):
+        t = Table(title=f"Red flags (score {report.red_flags['red_flag_score']:.0f}/100)")
+        t.add_column("Severity"); t.add_column("Flag"); t.add_column("Detail")
+        for f in report.red_flags["flags"]:
+            colour = {"critical": "red", "high": "yellow", "medium": "cyan", "low": "dim"}
+            t.add_row(f"[{colour.get(f['severity'],'white')}]{f['severity']}[/]",
+                      f["title"], f["detail"][:60])
+        console.print(t)
+    if report.red_flags.get("note"):
+        console.print(f"[dim]{report.red_flags['note']}[/dim]")
+
+    if report.key_assumptions:
+        console.print("\n[bold magenta]Key assumptions (not evidence)[/bold magenta]")
+        for a in report.key_assumptions:
+            console.print(f"  · {a['label']}: {a['rendered']} — {a['rationale'][:110]}")
+
+    if report.invalidators:
+        console.print("\n[bold]What would invalidate this[/bold]")
+        for line in report.invalidators:
+            console.print(f"  · {line}")
+
+    if report.missing:
+        console.print("\n[bold yellow]Missing data[/bold yellow]")
+        for line in report.missing:
+            console.print(f"  · {line}")
+
+    console.print(f"\n[dim]{report.disclaimer}[/dim]")
+
+
+@app.command()
 def learning() -> None:
     """What the system has learned from resolved predictions (section 51).
 
