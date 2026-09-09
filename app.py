@@ -5,7 +5,7 @@ import anthropic
 from datetime import date, timedelta
 from collections import defaultdict
 import calendar as cal_module
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, url_for
 from dotenv import load_dotenv
 
 try:
@@ -103,6 +103,18 @@ def fetch_ical_occupancy(url):
 @app.route("/")
 def index():
     return render_template("index.html", months=MONTHS)
+
+
+@app.route("/tornado")
+def tornado():
+    """Full-screen storm that stands between Henry and the TikTok feed."""
+    return render_template("tornado.html")
+
+
+@app.route("/tornado/setup")
+def tornado_setup():
+    tornado_url = url_for("tornado", _external=True)
+    return render_template("tornado_setup.html", tornado_url=tornado_url)
 
 
 @app.route("/analyze", methods=["POST"])

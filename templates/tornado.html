@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Tornado</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: #0b0c10;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: #e8e4dc;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+  }
+  body { position: fixed; inset: 0; }
+
+  #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* Scrims: keep the copy readable once the debris fills the screen. */
+  .ui::before, .ui::after {
+    content: "";
+    position: fixed;
+    left: 0; right: 0;
+    height: 34%;
+    pointer-events: none;
+    z-index: -1;
+  }
+  .ui::before { top: 0; background: linear-gradient(to bottom, rgba(8,9,14,.8), rgba(8,9,14,0)); }
+  .ui::after { bottom: 0; height: 46%; background: linear-gradient(to top, rgba(8,9,14,.92) 30%, rgba(8,9,14,0)); }
+
+  .ui {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: max(28px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom));
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .top { text-align: center; opacity: 0; animation: fade .9s .5s forwards; }
+  .chip {
+    display: inline-block;
+    padding: 6px 14px;
+    border: 1px solid rgba(232,228,220,.28);
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    font-weight: 600;
+    background: rgba(11,12,16,.35);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .count { margin-top: 10px; font-size: 12px; letter-spacing: .04em; color: rgba(232,228,220,.55); }
+
+  .bottom { text-align: center; opacity: 0; animation: fade 1.1s 1.1s forwards; }
+  .msg {
+    font-size: clamp(26px, 8vw, 40px);
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.15;
+    text-shadow: 0 2px 30px rgba(0,0,0,.8);
+  }
+  .sub { margin-top: 12px; font-size: 15px; color: rgba(232,228,220,.6); line-height: 1.4; }
+
+  .gate { margin-top: 34px; height: 58px; display: flex; align-items: center; justify-content: center; }
+
+  .timer { font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: rgba(232,228,220,.45); font-variant-numeric: tabular-nums; }
+
+  .hold {
+    position: relative;
+    pointer-events: auto;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 300px;
+    height: 58px;
+    border: 1px solid rgba(232,228,220,.3);
+    border-radius: 14px;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    background: rgba(11,12,16,.4);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    cursor: pointer;
+  }
+  .hold.on { display: flex; animation: fade .5s forwards; }
+  .hold .fill {
+    position: absolute;
+    inset: 0;
+    width: 0%;
+    background: rgba(232,228,220,.18);
+    transition: width .06s linear;
+  }
+  .hold span { position: relative; z-index: 1; }
+
+  .done { position: fixed; inset: 0; z-index: 20; background: #0b0c10; display: none;
+          flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px; }
+  .done.on { display: flex; animation: fade .6s forwards; }
+  .done h2 { font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
+  .done p { margin-top: 14px; font-size: 15px; color: rgba(232,228,220,.5); line-height: 1.5; max-width: 300px; }
+
+  @keyframes fade { to { opacity: 1; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ui">
+  <div class="top">
+    <div class="chip" id="chip">breeze</div>
+    <div class="count" id="count"></div>
+  </div>
+  <div class="bottom">
+    <div class="msg" id="msg"></div>
+    <div class="sub" id="sub"></div>
+    <div class="gate">
+      <div class="timer" id="timer"></div>
+      <div class="hold" id="hold"><div class="fill" id="fill"></div><span>Hold to escape</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="done" id="done">
+  <h2>Fine. Go.</h2>
+  <p>It comes back bigger next time you open the app.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------------------------------------------------------
+     Escalation. Every hit inside the rolling window bumps the level.
+     Stored locally on the phone, so it survives between visits.
+  --------------------------------------------------------------- */
+  var KEY = "tornado.hits";
+  var WINDOW_MS = 90 * 60 * 1000;
+  var qs = new URLSearchParams(location.search);
+  var now = Date.now();
+
+  var hits = [];
+  try { hits = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { hits = []; }
+  if (!Array.isArray(hits)) hits = [];
+
+  if (qs.has("reset")) hits = [];
+  hits = hits.filter(function (t) { return typeof t === "number" && now - t < WINDOW_MS; });
+  hits.push(now);
+  try { localStorage.setItem(KEY, JSON.stringify(hits)); } catch (e) {}
+
+  var LEVELS = [
+    { name: "breeze",    hold: 5000,  holdMs: 800,  msg: "Enough.",              sub: "Five seconds. Consider it a warning.", parts: 200, funnel: 0.42, veil: 0.30, shake: 0.5, spin: 1.00, wind: 14 },
+    { name: "gust",      hold: 12000, holdMs: 1100, msg: "Back already.",        sub: "It gets slower every time you do this.", parts: 320, funnel: 0.52, veil: 0.42, shake: 0.8, spin: 1.15, wind: 22 },
+    { name: "squall",    hold: 25000, holdMs: 1500, msg: "Third time this hour.", sub: "Nothing new has been posted since the last one.", parts: 460, funnel: 0.64, veil: 0.55, shake: 1.2, spin: 1.35, wind: 32 },
+    { name: "funnel",    hold: 45000, holdMs: 2000, msg: "You're in it now.",    sub: "Put the phone face down and let this one pass.", parts: 620, funnel: 0.78, veil: 0.68, shake: 1.7, spin: 1.55, wind: 44 },
+    { name: "f5",        hold: 90000, holdMs: 2600, msg: "This is the storm.",   sub: "Ninety seconds. You earned every one of them.", parts: 820, funnel: 0.95, veil: 0.80, shake: 2.4, spin: 1.80, wind: 60 }
+  ];
+
+  var level = qs.has("level") ? Math.max(1, parseInt(qs.get("level"), 10) || 1) : hits.length;
+  var cfg = LEVELS[Math.min(level, LEVELS.length) - 1];
+
+  var ORD = ["", "First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth"];
+  document.getElementById("chip").textContent = cfg.name;
+  document.getElementById("count").textContent =
+    (ORD[level] || level + "th") + " tornado in the last 90 minutes";
+  document.getElementById("msg").textContent = cfg.msg;
+  document.getElementById("sub").textContent = cfg.sub;
+
+  /* ---------------------------------------------------------------
+     Canvas storm
+  --------------------------------------------------------------- */
+  var c = document.getElementById("c");
+  var ctx = c.getContext("2d");
+  var sky = document.createElement("canvas");
+  var sctx = sky.getContext("2d");
+  var W = 0, H = 0, DPR = 1;
+  var parts = [], debris = [], winds = [];
+  var start = performance.now();
+  var flashUntil = 0, nextFlash = 4000;
+
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+
+  function build() {
+    parts.length = 0;
+    for (var i = 0; i < cfg.parts; i++) {
+      parts.push({
+        a: rnd(0, Math.PI * 2),
+        y: Math.random(),
+        rj: rnd(0.72, 1.06),
+        spd: rnd(1.5, 3.4),
+        rise: rnd(0.05, 0.22),
+        len: rnd(10, 40),
+        w: rnd(0.7, 2.6),
+        l: rnd(42, 88),
+        h: rnd(20, 40),
+        al: rnd(0.30, 0.95)
+      });
+    }
+    debris.length = 0;
+    var dn = Math.round(14 + cfg.parts * 0.045);
+    for (var j = 0; j < dn; j++) {
+      debris.push({
+        a: rnd(0, Math.PI * 2),
+        y: rnd(0.25, 1),
+        rj: rnd(0.9, 1.35),
+        spd: rnd(1.1, 2.3),
+        rise: rnd(0.02, 0.11),
+        w: rnd(5, 18),
+        h: rnd(3, 9),
+        rot: rnd(0, 6.28),
+        rs: rnd(-7, 7),
+        l: rnd(30, 62)
+      });
+    }
+    winds.length = 0;
+    for (var k = 0; k < cfg.wind; k++) {
+      winds.push({
+        y: Math.random(),
+        x: Math.random(),
+        spd: rnd(0.25, 0.9),
+        len: rnd(0.08, 0.34),
+        al: rnd(0.04, 0.16),
+        w: rnd(0.7, 2.2)
+      });
+    }
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    c.width = Math.round(W * DPR);
+    c.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // Cached storm sky. Painted over the scene at low alpha every frame, so
+    // it both re-tints toward the sky and smears the last few frames of
+    // rotation into motion trails.
+    sky.width = c.width;
+    sky.height = c.height;
+    sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    var g = sctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#1b1e2a");
+    g.addColorStop(0.55, "#13151d");
+    g.addColorStop(1, "#0a0b10");
+    sctx.fillStyle = g;
+    sctx.fillRect(0, 0, W, H);
+
+    // Vignette, baked in: edges fall away faster than the middle.
+    var v = sctx.createRadialGradient(W / 2, H * 0.5, Math.min(W, H) * 0.25,
+                                      W / 2, H * 0.5, Math.max(W, H) * 0.78);
+    v.addColorStop(0, "rgba(8,9,14,0)");
+    v.addColorStop(1, "rgba(8,9,14," + (0.55 + cfg.veil * 0.45).toFixed(3) + ")");
+    sctx.fillStyle = v;
+    sctx.fillRect(0, 0, W, H);
+  }
+
+  // Funnel is wide at the top, tight at the ground.
+  function radiusAt(y) {
+    return W * cfg.funnel * (0.10 + 0.90 * Math.pow(1 - y, 1.7));
+  }
+  function yAt(y) { return -0.12 * H + y * 1.20 * H; }
+
+  // Horizontal path: tears in from the left, crosses to the far side, then
+  // swings back and parks. It never leaves the screen — an empty frame is
+  // dead air, and dead air is where the thumb starts moving again.
+  function centerAt(y, t) {
+    var x, p;
+    if (t < 1600) {                       // barrels in
+      p = t / 1600;
+      x = (-0.50 + (1 - Math.pow(1 - p, 2.4)) * 0.80) * W;
+    } else if (t < 3000) {                // the crossing
+      p = (t - 1600) / 1400;
+      x = (0.30 + (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2) * 0.56) * W;
+    } else if (t < 4400) {                // swings back
+      p = (t - 3000) / 1400;
+      x = (0.86 - (1 - Math.pow(1 - p, 2.6)) * 0.36) * W;
+    } else {                              // settles in and stays
+      x = 0.50 * W + Math.sin((t - 4400) * 0.00042) * W * 0.11;
+    }
+    // Sinuous lean down the length of the funnel.
+    return x + Math.sin(y * 2.7 + t * 0.0011) * W * 0.075 * (1 - y * 0.55);
+  }
+
+  function intensity(t) {
+    return Math.min(1, t / 2600);
+  }
+
+  var last = start;
+  function frame(ts) {
+    var t = ts - start;
+    var dt = Math.min(0.05, (ts - last) / 1000);
+    last = ts;
+    var inten = intensity(t);
+
+    // Sky at partial alpha: fades the previous frames instead of erasing
+    // them, which is what turns the orbits into smeared motion trails.
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.globalAlpha = 0.34;
+    ctx.drawImage(sky, 0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    // Screen shake.
+    var sh = cfg.shake * inten * 3.5;
+    ctx.translate(Math.sin(t * 0.031) * sh + rnd(-sh, sh) * 0.4,
+                  Math.cos(t * 0.027) * sh * 0.7 + rnd(-sh, sh) * 0.3);
+
+    // Wind streaks tearing across the whole screen.
+    ctx.lineCap = "round";
+    for (var w = 0; w < winds.length; w++) {
+      var wd = winds[w];
+      wd.x += wd.spd * dt * (0.5 + inten);
+      if (wd.x > 1.4) { wd.x = -0.5; wd.y = Math.random(); }
+      var wx = wd.x * W * 1.4 - 0.2 * W, wy = wd.y * H;
+      ctx.strokeStyle = "rgba(200,196,186," + (wd.al * inten).toFixed(3) + ")";
+      ctx.lineWidth = wd.w;
+      ctx.beginPath();
+      ctx.moveTo(wx, wy);
+      ctx.lineTo(wx - wd.len * W, wy + wd.len * 14);
+      ctx.stroke();
+    }
+
+    // The funnel itself: a dusty column standing behind the debris.
+    ctx.save();
+    ctx.globalAlpha = 0.5 * inten;
+    var steps = 26;
+    for (var s = 0; s < steps; s++) {
+      var y0 = s / steps, y1 = (s + 1) / steps;
+      var r0 = radiusAt(y0), r1 = radiusAt(y1);
+      var x0 = centerAt(y0, t), x1 = centerAt(y1, t);
+      var py0 = yAt(y0), py1 = yAt(y1);
+      var shade = 0.05 + 0.09 * (1 - y0);
+      // Soft horizontal falloff, so the column has no hard edge against the sky.
+      var cg = ctx.createLinearGradient(x0 - r0, 0, x0 + r0, 0);
+      cg.addColorStop(0, "rgba(150,143,131,0)");
+      cg.addColorStop(0.22, "rgba(150,143,131," + (shade * 0.75).toFixed(3) + ")");
+      cg.addColorStop(0.5, "rgba(168,160,147," + shade.toFixed(3) + ")");
+      cg.addColorStop(0.78, "rgba(150,143,131," + (shade * 0.75).toFixed(3) + ")");
+      cg.addColorStop(1, "rgba(150,143,131,0)");
+      ctx.fillStyle = cg;
+      ctx.beginPath();
+      ctx.moveTo(x0 - r0, py0);
+      ctx.lineTo(x0 + r0, py0);
+      ctx.lineTo(x1 + r1, py1);
+      ctx.lineTo(x1 - r1, py1);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Orbiting dust.
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      var spinScale = 0.6 + 1.5 * (1 - p.y);
+      p.a += p.spd * cfg.spin * spinScale * dt * (0.4 + inten * 0.9);
+      p.y -= p.rise * dt * (0.4 + inten);
+      if (p.y < -0.05) { p.y = 1.05; p.a = rnd(0, Math.PI * 2); }
+
+      var R = radiusAt(p.y) * p.rj;
+      var cx = centerAt(p.y, t);
+      var sa = Math.sin(p.a), ca = Math.cos(p.a);
+      var x = cx + ca * R;
+      var y = yAt(p.y) + sa * R * 0.13;
+
+      var front = sa * 0.5 + 0.5;              // 1 = near side
+      var sc = 0.6 + 0.55 * front;
+      var al = p.al * front * inten;
+      if (al < 0.012) continue;
+
+      // Streak along the direction of travel.
+      var tx = -sa, ty = 0.13 * ca;
+      var tl = Math.sqrt(tx * tx + ty * ty) || 1;
+      var len = p.len * sc;
+
+      ctx.strokeStyle = "hsla(" + p.h + ",14%," + p.l + "%," + al.toFixed(3) + ")";
+      ctx.lineWidth = p.w * sc;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - (tx / tl) * len, y - (ty / tl) * len);
+      ctx.stroke();
+    }
+
+    // Heavier debris.
+    for (var d = 0; d < debris.length; d++) {
+      var b = debris[d];
+      b.a += b.spd * cfg.spin * dt * (0.4 + inten);
+      b.y -= b.rise * dt * (0.4 + inten);
+      b.rot += b.rs * dt;
+      if (b.y < -0.05) { b.y = 1.05; b.a = rnd(0, Math.PI * 2); }
+
+      var BR = radiusAt(b.y) * b.rj;
+      var bsa = Math.sin(b.a);
+      var bx = centerAt(b.y, t) + Math.cos(b.a) * BR;
+      var by = yAt(b.y) + bsa * BR * 0.13;
+      var bfront = bsa * 0.5 + 0.5;
+      var bsc = 0.6 + 0.6 * bfront;
+
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(b.rot);
+      ctx.fillStyle = "hsla(30,12%," + b.l + "%," + (0.72 * bfront * inten).toFixed(3) + ")";
+      ctx.fillRect(-b.w * bsc / 2, -b.h * bsc / 2, b.w * bsc, b.h * bsc);
+      ctx.restore();
+    }
+
+    // Dust cloud boiling up where the funnel meets the ground.
+    var gx = centerAt(1, t), gy = yAt(1);
+    var gr = radiusAt(1) * 5.5;
+    var gg = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+    gg.addColorStop(0, "rgba(158,150,137," + (0.30 * inten).toFixed(3) + ")");
+    gg.addColorStop(0.5, "rgba(120,114,104," + (0.12 * inten).toFixed(3) + ")");
+    gg.addColorStop(1, "rgba(120,114,104,0)");
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, gr, gr * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // Lightning, from level 3 up.
+    if (level >= 3) {
+      if (t > nextFlash) { flashUntil = t + rnd(60, 150); nextFlash = t + rnd(2600, 7000); }
+      if (t < flashUntil) {
+        ctx.fillStyle = "rgba(226,232,240,0.13)";
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", function () { setTimeout(resize, 120); });
+  resize();
+  build();
+  requestAnimationFrame(frame);
+
+  /* ---------------------------------------------------------------
+     The gate. Wall-clock countdown, then a press-and-hold to leave.
+  --------------------------------------------------------------- */
+  var timerEl = document.getElementById("timer");
+  var holdEl = document.getElementById("hold");
+  var fillEl = document.getElementById("fill");
+  var doneEl = document.getElementById("done");
+  var opensAt = now + cfg.hold;
+
+  function fmt(ms) {
+    var s = Math.ceil(ms / 1000);
+    if (s < 60) return s + "s";
+    return Math.floor(s / 60) + "m " + String(s % 60).padStart(2, "0") + "s";
+  }
+
+  var tick = setInterval(function () {
+    var left = opensAt - Date.now();
+    if (left > 0) { timerEl.textContent = fmt(left); return; }
+    clearInterval(tick);
+    timerEl.style.display = "none";
+    holdEl.classList.add("on");
+  }, 200);
+  timerEl.textContent = fmt(cfg.hold);
+
+  var pressStart = 0, raf = 0;
+  function press(e) {
+    e.preventDefault();
+    if (pressStart) return;
+    pressStart = Date.now();
+    (function step() {
+      var p = Math.min(1, (Date.now() - pressStart) / cfg.holdMs);
+      fillEl.style.width = (p * 100) + "%";
+      if (p >= 1) { release(); doneEl.classList.add("on"); return; }
+      raf = requestAnimationFrame(step);
+    })();
+  }
+  function release() {
+    pressStart = 0;
+    cancelAnimationFrame(raf);
+    fillEl.style.width = "0%";
+  }
+  holdEl.addEventListener("touchstart", press, { passive: false });
+  holdEl.addEventListener("touchend", release);
+  holdEl.addEventListener("touchcancel", release);
+  holdEl.addEventListener("mousedown", press);
+  window.addEventListener("mouseup", release);
+
+  document.addEventListener("gesturestart", function (e) { e.preventDefault(); });
+})();
+</script>
+</body>
+</html>
